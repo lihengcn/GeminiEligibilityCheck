@@ -1,10 +1,15 @@
 package com.google.gemini.controller;
 
 import com.google.gemini.dto.CallbackRequest;
+import com.google.gemini.dto.ImportRequest;
+import com.google.gemini.dto.ImportResponse;
+import com.google.gemini.dto.StatusView;
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
 import com.google.gemini.service.ResultExportService;
 import com.google.gemini.storage.AccountStorage;
+import com.google.gemini.storage.AccountStorage.ImportMode;
+import com.google.gemini.storage.AccountStorage.ImportResult;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -64,17 +69,31 @@ public class AccountController {
         return ResponseEntity.ok("ok");
     }
 
-    @PostMapping("/reload")
-    public ResponseEntity<String> reload() throws Exception {
-        // 重新加载账号并覆盖内存数据。
-        int loaded = accountStorage.reloadFromFile();
-        return ResponseEntity.ok("reloaded:" + loaded);
-    }
-
     @PostMapping("/reset-checking")
     public ResponseEntity<String> resetChecking() {
         // 防止无回调导致卡死，重置检查中状态。
         int reset = accountStorage.resetCheckingToIdle();
         return ResponseEntity.ok("reset:" + reset);
+    }
+
+    @PostMapping("/import")
+    public ResponseEntity<ImportResponse> importAccounts(@RequestBody ImportRequest request) {
+        if (request == null || request.getContent() == null || request.getContent().isBlank()
+                || request.getMode() == null || request.getMode().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        ImportMode mode;
+        try {
+            mode = ImportMode.valueOf(request.getMode().trim().toUpperCase());
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().build();
+        }
+        ImportResult result = accountStorage.importFromText(request.getContent(), mode);
+        return ResponseEntity.ok(new ImportResponse(result.added(), result.updated(), result.skipped()));
+    }
+
+    @GetMapping("/accounts")
+    public ResponseEntity<StatusView> accounts() {
+        return ResponseEntity.ok(StatusView.from(accountStorage.listAccounts()));
     }
 }

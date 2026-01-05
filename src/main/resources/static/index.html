@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>账号状态面板</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+    />
+    <style>
+      :root {
+        --bg: #f6f3ee;
+        --ink: #1e1c18;
+        --ink-soft: #4a433b;
+        --accent: #c84b31;
+        --accent-2: #1f6f8b;
+        --card: #ffffff;
+        --shadow: 0 20px 60px rgba(30, 28, 24, 0.15);
+        --line: rgba(30, 28, 24, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at top left, #f9e7cf 0%, #f6f3ee 45%, #e8f0f2 100%);
+      }
+
+      header {
+        padding: 32px 20px 12px;
+      }
+
+      .title {
+        margin: 0;
+        font-size: clamp(28px, 3vw, 40px);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .subtitle {
+        margin: 10px 0 0;
+        color: var(--ink-soft);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(260px, 360px) 1fr;
+        gap: 24px;
+        padding: 20px;
+      }
+
+      .panel {
+        background: var(--card);
+        border-radius: 18px;
+        padding: 20px;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--line);
+      }
+
+      .panel h2 {
+        margin: 0 0 16px;
+        font-size: 18px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .controls {
+        display: grid;
+        gap: 14px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      label {
+        font-size: 13px;
+        color: var(--ink-soft);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      input[type="file"],
+      input[type="number"] {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        font-size: 14px;
+      }
+
+      .radio-group {
+        display: grid;
+        gap: 8px;
+        font-size: 14px;
+      }
+
+      .radio-group label {
+        text-transform: none;
+        letter-spacing: normal;
+        color: var(--ink);
+      }
+
+      button {
+        border: none;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        background: var(--accent);
+        color: #fff;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      button.secondary {
+        background: var(--accent-2);
+      }
+
+      button:active {
+        transform: translateY(1px);
+      }
+
+      .status-chip {
+        display: inline-flex;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        background: #f2efe9;
+        color: var(--ink-soft);
+      }
+
+      .status-chip.IDLE {
+        background: #f2efe9;
+      }
+
+      .status-chip.CHECKING {
+        background: #fde1c3;
+        color: #8a4e21;
+      }
+
+      .status-chip.QUALIFIED {
+        background: #d7f0e5;
+        color: #2b6a4a;
+      }
+
+      .status-chip.INVALID {
+        background: #f7c6c2;
+        color: #8b2b2b;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 12px 8px;
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        font-size: 14px;
+      }
+
+      th {
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--ink-soft);
+        font-size: 12px;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .summary-card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fbfaf7;
+      }
+
+      .summary-card strong {
+        display: block;
+        font-size: 16px;
+      }
+
+      .message {
+        font-size: 13px;
+        color: var(--ink-soft);
+      }
+
+      .header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      .lang-switch {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      @media (max-width: 920px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .header-row {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-row">
+        <div>
+          <h1 class="title" data-i18n="title">Account Pulse</h1>
+          <p class="subtitle" data-i18n="subtitle">导入账号 txt 文件，实时查看状态变化。</p>
+        </div>
+        <div class="lang-switch">
+          <button id="langZh" class="secondary" data-lang="zh">中文</button>
+          <button id="langEn" class="secondary" data-lang="en">English</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h2 data-i18n="import_title">导入与刷新</h2>
+        <div class="controls">
+          <div class="field">
+            <label for="file" data-i18n="file_label">TXT 文件</label>
+            <input id="file" type="file" accept=".txt" />
+          </div>
+          <div class="field">
+            <label data-i18n="mode_label">导入模式</label>
+            <div class="radio-group">
+              <label>
+                <input type="radio" name="mode" value="OVERWRITE" checked />
+                <span data-i18n="mode_overwrite">覆盖模式（清空后导入）</span>
+              </label>
+              <label>
+                <input type="radio" name="mode" value="APPEND" />
+                <span data-i18n="mode_append">追加模式（保留并追加）</span>
+              </label>
+            </div>
+          </div>
+          <button id="importBtn" data-i18n="import_btn">开始导入</button>
+          <div class="field">
+            <label for="refreshSeconds" data-i18n="refresh_label">刷新间隔（秒）</label>
+            <input id="refreshSeconds" type="number" min="1" value="5" />
+          </div>
+          <button id="applyRefresh" class="secondary" data-i18n="apply_refresh">应用刷新</button>
+          <button id="manualRefresh" class="secondary" data-i18n="manual_refresh">立即刷新</button>
+          <button id="resetChecking" class="secondary" data-i18n="reset_checking">重置检查中</button>
+          <div class="message" id="message"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 data-i18n="status_title">账号状态</h2>
+        <div class="summary" id="summary"></div>
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="th_email">账号</th>
+              <th data-i18n="th_password">密码</th>
+              <th data-i18n="th_2fa">2FA 密钥</th>
+              <th data-i18n="th_status">状态</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <script>
+      const messageEl = document.getElementById("message");
+      const fileInput = document.getElementById("file");
+      const importBtn = document.getElementById("importBtn");
+      const applyRefreshBtn = document.getElementById("applyRefresh");
+      const manualRefreshBtn = document.getElementById("manualRefresh");
+      const resetCheckingBtn = document.getElementById("resetChecking");
+      const refreshSecondsInput = document.getElementById("refreshSeconds");
+      const tableBody = document.getElementById("tableBody");
+      const summaryEl = document.getElementById("summary");
+      const langButtons = document.querySelectorAll(".lang-switch button");
+      let refreshTimer = null;
+      let currentLang = "zh";
+
+      const i18n = {
+        zh: {
+          page_title: "账号状态面板",
+          title: "Account Pulse",
+          subtitle: "导入账号 txt 文件，实时查看状态变化。",
+          import_title: "导入与刷新",
+          file_label: "TXT 文件",
+          mode_label: "导入模式",
+          mode_overwrite: "覆盖模式（清空后导入）",
+          mode_append: "追加模式（保留并追加）",
+          import_btn: "开始导入",
+          refresh_label: "刷新间隔（秒）",
+          apply_refresh: "应用刷新",
+          manual_refresh: "立即刷新",
+          reset_checking: "重置检查中",
+          status_title: "账号状态",
+          th_email: "账号",
+          th_password: "密码",
+          th_2fa: "2FA 密钥",
+          th_status: "状态",
+          summary_total: "总数",
+          summary_idle: "空闲",
+          summary_checking: "检查中",
+          summary_qualified: "合格",
+          summary_invalid: "无效",
+          msg_refreshed: "已刷新",
+          msg_refresh_fail: "刷新失败，请检查服务是否运行。",
+          msg_file_missing: "请先选择 txt 文件。",
+          msg_import_done: (added, updated, skipped) =>
+            `导入完成：新增 ${added}，更新 ${updated}，跳过 ${skipped}`,
+          msg_import_fail: "导入失败，请检查文件格式。",
+          msg_refresh_set: (seconds) => `刷新间隔已设置为 ${seconds} 秒`,
+          msg_reset_done: (count) => `已重置 ${count} 个检查中账号`,
+          msg_reset_fail: "重置失败，请稍后重试。",
+          msg_reset_confirm: "确认将所有检查中账号重置为空闲？",
+          empty_table: "暂无账号",
+        },
+        en: {
+          page_title: "Account Dashboard",
+          title: "Account Pulse",
+          subtitle: "Import TXT accounts and track status changes in real time.",
+          import_title: "Import & Refresh",
+          file_label: "TXT File",
+          mode_label: "Import Mode",
+          mode_overwrite: "Overwrite (clear then import)",
+          mode_append: "Append (keep and add)",
+          import_btn: "Import",
+          refresh_label: "Refresh Interval (seconds)",
+          apply_refresh: "Apply Refresh",
+          manual_refresh: "Refresh Now",
+          reset_checking: "Reset Checking",
+          status_title: "Account Status",
+          th_email: "Email",
+          th_password: "Password",
+          th_2fa: "2FA Token",
+          th_status: "Status",
+          summary_total: "Total",
+          summary_idle: "Idle",
+          summary_checking: "Checking",
+          summary_qualified: "Qualified",
+          summary_invalid: "Invalid",
+          msg_refreshed: "Refreshed",
+          msg_refresh_fail: "Refresh failed. Please check if the service is running.",
+          msg_file_missing: "Please select a TXT file first.",
+          msg_import_done: (added, updated, skipped) =>
+            `Import done: added ${added}, updated ${updated}, skipped ${skipped}`,
+          msg_import_fail: "Import failed. Please check the file format.",
+          msg_refresh_set: (seconds) => `Refresh interval set to ${seconds} seconds`,
+          msg_reset_done: (count) => `Reset ${count} checking accounts`,
+          msg_reset_fail: "Reset failed. Please try again.",
+          msg_reset_confirm: "Reset all checking accounts to idle?",
+          empty_table: "No accounts",
+        },
+      };
+
+      function setMessage(text, tone = "info") {
+        messageEl.textContent = text;
+        messageEl.style.color = tone === "error" ? "#8b2b2b" : "";
+      }
+
+      function renderSummary(counts, total) {
+        const t = i18n[currentLang];
+        const items = [
+          { label: t.summary_total, value: total },
+          { label: t.summary_idle, value: counts.IDLE || 0 },
+          { label: t.summary_checking, value: counts.CHECKING || 0 },
+          { label: t.summary_qualified, value: counts.QUALIFIED || 0 },
+          { label: t.summary_invalid, value: counts.INVALID || 0 },
+        ];
+        summaryEl.innerHTML = items
+          .map(
+            (item) =>
+              `<div class="summary-card"><span>${item.label}</span><strong>${item.value}</strong></div>`
+          )
+          .join("");
+      }
+
+      function renderTable(accounts) {
+        const t = i18n[currentLang];
+        if (!accounts || accounts.length === 0) {
+          tableBody.innerHTML = `<tr><td colspan="4">${t.empty_table}</td></tr>`;
+          return;
+        }
+        tableBody.innerHTML = accounts
+          .map(
+            (account) =>
+              `<tr>
+                <td>${account.email}</td>
+                <td>${account.password || ""}</td>
+                <td>${account.authenticatorToken || ""}</td>
+                <td><span class="status-chip ${account.status}">${account.status}</span></td>
+              </tr>`
+          )
+          .join("");
+      }
+
+      async function fetchAccounts() {
+        try {
+          const response = await fetch("/api/accounts");
+          if (!response.ok) {
+            throw new Error("加载失败");
+          }
+          const data = await response.json();
+          renderSummary(data.counts || {}, data.total || 0);
+          renderTable(data.accounts || []);
+          setMessage(i18n[currentLang].msg_refreshed);
+        } catch (error) {
+          setMessage(i18n[currentLang].msg_refresh_fail, "error");
+        }
+      }
+
+      function scheduleRefresh() {
+        if (refreshTimer) {
+          clearInterval(refreshTimer);
+        }
+        const seconds = Number(refreshSecondsInput.value) || 5;
+        refreshTimer = setInterval(fetchAccounts, seconds * 1000);
+        setMessage(i18n[currentLang].msg_refresh_set(seconds));
+      }
+
+      importBtn.addEventListener("click", async () => {
+        const file = fileInput.files[0];
+        if (!file) {
+          setMessage(i18n[currentLang].msg_file_missing, "error");
+          return;
+        }
+        const mode = document.querySelector("input[name='mode']:checked").value;
+        try {
+          const content = await file.text();
+          const response = await fetch("/api/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode, content }),
+          });
+          if (!response.ok) {
+            throw new Error("导入失败");
+          }
+          const result = await response.json();
+          setMessage(i18n[currentLang].msg_import_done(result.added, result.updated, result.skipped));
+          await fetchAccounts();
+        } catch (error) {
+          setMessage(i18n[currentLang].msg_import_fail, "error");
+        }
+      });
+
+      applyRefreshBtn.addEventListener("click", scheduleRefresh);
+      manualRefreshBtn.addEventListener("click", fetchAccounts);
+      resetCheckingBtn.addEventListener("click", async () => {
+        const confirmText = i18n[currentLang].msg_reset_confirm;
+        if (!window.confirm(confirmText)) {
+          return;
+        }
+        try {
+          const response = await fetch("/api/reset-checking", { method: "POST" });
+          if (!response.ok) {
+            throw new Error("reset failed");
+          }
+          const text = await response.text();
+          const count = Number(text.split(":")[1]) || 0;
+          setMessage(i18n[currentLang].msg_reset_done(count));
+          await fetchAccounts();
+        } catch (error) {
+          setMessage(i18n[currentLang].msg_reset_fail, "error");
+        }
+      });
+
+      function applyLanguage(lang) {
+        currentLang = lang;
+        document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+        document.title = i18n[currentLang].page_title;
+        document.querySelectorAll("[data-i18n]").forEach((node) => {
+          const key = node.getAttribute("data-i18n");
+          const value = i18n[currentLang][key];
+          if (typeof value === "string") {
+            node.textContent = value;
+          }
+        });
+        renderSummary({}, 0);
+        fetchAccounts();
+      }
+
+      langButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          applyLanguage(btn.getAttribute("data-lang"));
+        });
+      });
+
+      applyLanguage(currentLang);
+      scheduleRefresh();
+    </script>
+  </body>
+</html>

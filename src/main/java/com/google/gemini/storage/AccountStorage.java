@@ -2,64 +2,68 @@ package com.google.gemini.storage;
 
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-import jakarta.annotation.PostConstruct;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
 public class AccountStorage {
     private final Map<String, Account> accounts = new LinkedHashMap<>();
 
-    @PostConstruct
-    public void init() throws Exception {
-        reloadFromFile();
-    }
-
-    public synchronized int reloadFromFile() throws Exception {
-        // 重新加载时覆盖内存数据，保证顺序与文件一致。
-        accounts.clear();
-        ClassPathResource resource = new ClassPathResource("accounts.txt");
-        if (!resource.exists()) {
-            return 0;
+    public synchronized ImportResult importFromText(String content, ImportMode mode) {
+        if (mode == ImportMode.OVERWRITE) {
+            accounts.clear();
         }
-        int loaded = 0;
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty()) {
-                    continue;
-                }
-                String[] parts = line.split(";", -1);
-                if (parts.length < 6) {
-                    continue;
-                }
-                String email = parts[0];
-                if (email == null || email.isBlank()) {
-                    continue;
-                }
-                // 按文件顺序加载账号，默认标记为空闲。
-                Account account = new Account(
-                        email,
-                        parts[1],
-                        parts[2],
-                        parts[3],
-                        parts[4],
-                        parts[5],
-                        AccountStatus.IDLE
-                );
-                accounts.put(email, account);
-                loaded++;
+        int added = 0;
+        int updated = 0;
+        int skipped = 0;
+        String[] lines = content.split("\\r?\\n");
+        for (String rawLine : lines) {
+            if (rawLine == null) {
+                skipped++;
+                continue;
             }
+            String line = rawLine.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            String[] parts = line.split(";", -1);
+            if (parts.length < 6) {
+                skipped++;
+                continue;
+            }
+            String email = parts[0];
+            if (email == null || email.isBlank()) {
+                skipped++;
+                continue;
+            }
+            Account existing = accounts.get(email);
+            if (existing != null) {
+                // 追加模式下保留原状态，仅更新账号资料。
+                existing.setPassword(parts[1]);
+                existing.setAuthenticatorToken(parts[2]);
+                existing.setAppPassword(parts[3]);
+                existing.setAuthenticatorUrl(parts[4]);
+                existing.setMessagesUrl(parts[5]);
+                updated++;
+                continue;
+            }
+            Account account = new Account(
+                    email,
+                    parts[1],
+                    parts[2],
+                    parts[3],
+                    parts[4],
+                    parts[5],
+                    AccountStatus.IDLE
+            );
+            accounts.put(email, account);
+            added++;
         }
-        return loaded;
+        return new ImportResult(added, updated, skipped);
     }
 
     public synchronized Account pollAccount() {
@@ -93,5 +97,17 @@ public class AccountStorage {
             }
         }
         return reset;
+    }
+
+    public synchronized List<Account> listAccounts() {
+        return new ArrayList<>(accounts.values());
+    }
+
+    public record ImportResult(int added, int updated, int skipped) {
+    }
+
+    public enum ImportMode {
+        OVERWRITE,
+        APPEND
     }
 }
