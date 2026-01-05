@@ -6,7 +6,6 @@ import com.google.gemini.dto.ImportResponse;
 import com.google.gemini.dto.StatusView;
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
-import com.google.gemini.service.ResultExportService;
 import com.google.gemini.storage.AccountStorage;
 import com.google.gemini.storage.AccountStorage.ImportMode;
 import com.google.gemini.storage.AccountStorage.ImportResult;
@@ -23,12 +22,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountController {
     // 账号池与并发控制
     private final AccountStorage accountStorage;
-    // 结果持久化服务
-    private final ResultExportService resultExportService;
 
-    public AccountController(AccountStorage accountStorage, ResultExportService resultExportService) {
+    public AccountController(AccountStorage accountStorage) {
         this.accountStorage = accountStorage;
-        this.resultExportService = resultExportService;
     }
 
     @GetMapping("/poll")
@@ -65,7 +61,6 @@ public class AccountController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
         }
 
-        resultExportService.appendResult(account);
         return ResponseEntity.ok("ok");
     }
 
