@@ -7,3 +7,4 @@ results*.txt
 server.*.log
 *.log
 services/*.exe
+scripts/
