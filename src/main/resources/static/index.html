@@ -8,6 +8,8 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
     />
+    <!-- 引入 OTPAuth 库用于生成验证码 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/otpauth/9.2.1/otpauth.umd.min.js"></script>
     <style>
       :root {
         --bg: #f6f3ee;
@@ -18,6 +20,25 @@
         --card: #ffffff;
         --shadow: 0 20px 60px rgba(30, 28, 24, 0.15);
         --line: rgba(30, 28, 24, 0.1);
+        --bg-grad: radial-gradient(circle at top left, #f9e7cf 0%, #f6f3ee 45%, #e8f0f2 100%);
+        --summary-bg: #fbfaf7;
+        --mini-card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 1) 100%);
+        --codebox-bg: rgba(246, 243, 238, 0.55);
+      }
+
+      html[data-theme="dark"] {
+        --bg: #0f1115;
+        --ink: #e7e9ee;
+        --ink-soft: rgba(231, 233, 238, 0.7);
+        --accent: #ff6b4a;
+        --accent-2: #4aa3c5;
+        --card: #161a22;
+        --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+        --line: rgba(231, 233, 238, 0.12);
+        --bg-grad: radial-gradient(circle at top left, rgba(255, 107, 74, 0.18) 0%, #0f1115 45%, rgba(74, 163, 197, 0.12) 100%);
+        --summary-bg: rgba(255, 255, 255, 0.03);
+        --mini-card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%);
+        --codebox-bg: rgba(255, 255, 255, 0.03);
       }
 
       * {
@@ -28,7 +49,9 @@
         margin: 0;
         font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
         color: var(--ink);
-        background: radial-gradient(circle at top left, #f9e7cf 0%, #f6f3ee 45%, #e8f0f2 100%);
+        background: var(--bg-grad);
+        height: 100vh;
+        overflow: hidden;
       }
 
       header {
@@ -52,6 +75,8 @@
         grid-template-columns: minmax(260px, 360px) 1fr;
         gap: 24px;
         padding: 20px;
+        height: calc(100vh - 140px);
+        overflow: hidden;
       }
 
       .panel {
@@ -60,6 +85,16 @@
         padding: 20px;
         box-shadow: var(--shadow);
         border: 1px solid var(--line);
+        min-height: 0;
+      }
+
+      .panel.scrollable {
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+
+      .panel.locked {
+        overflow: hidden;
       }
 
       .panel h2 {
@@ -79,6 +114,72 @@
         gap: 8px;
       }
 
+      .mini-card {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px;
+        background: var(--mini-card-bg);
+      }
+
+      .mini-card h3 {
+        margin: 0 0 8px;
+        font-size: 16px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .mini-card p {
+        margin: 0 0 12px;
+        color: var(--ink-soft);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .code-box {
+        margin-top: 10px;
+        padding: 16px;
+        border-radius: 14px;
+        border: 1px dashed rgba(30, 28, 24, 0.2);
+        background: var(--codebox-bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* 新增：大号验证码样式 */
+      .totp-display {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: 6px;
+        color: var(--accent);
+        cursor: pointer;
+        transition: transform 0.1s;
+      }
+      .totp-display:active {
+        transform: scale(0.95);
+      }
+
+      .timer {
+        font-size: 12px;
+        color: var(--ink-soft);
+      }
+
+      .note {
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--ink-soft);
+      }
+
+      .copyable {
+        cursor: pointer;
+      }
+
+      .copyable:hover {
+        text-decoration: underline;
+      }
+
       label {
         font-size: 13px;
         color: var(--ink-soft);
@@ -87,11 +188,25 @@
       }
 
       input[type="file"],
-      input[type="number"] {
+      input[type="number"],
+      input[type="text"] {
         padding: 10px 12px;
         border-radius: 10px;
         border: 1px solid var(--line);
         font-size: 14px;
+        background: var(--card);
+        color: var(--ink);
+      }
+
+      textarea,
+      select {
+        background: var(--card);
+        color: var(--ink);
+        border-color: var(--line);
+      }
+
+      ::placeholder {
+        color: var(--ink-soft);
       }
 
       .radio-group {
@@ -156,6 +271,12 @@
         color: #8b2b2b;
       }
 
+      .cat-btn[data-active="true"] {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
@@ -187,7 +308,7 @@
         border: 1px solid var(--line);
         border-radius: 12px;
         padding: 10px 12px;
-        background: #fbfaf7;
+        background: var(--summary-bg);
       }
 
       .summary-card strong {
@@ -234,17 +355,19 @@
         <div class="lang-switch">
           <button id="langZh" class="secondary" data-lang="zh">中文</button>
           <button id="langEn" class="secondary" data-lang="en">English</button>
+          <button id="themeToggle" class="secondary" type="button">夜间</button>
         </div>
       </div>
     </header>
 
     <main class="layout">
-      <section class="panel">
+      <section class="panel scrollable">
         <h2 data-i18n="import_title">导入与刷新</h2>
         <div class="controls">
           <div class="field">
             <label for="file" data-i18n="file_label">TXT 文件</label>
-            <input id="file" type="file" accept=".txt" />
+            <input id="file" type="file" accept=".txt" multiple />
+            <div id="fileHint" style="margin-top: 6px; font-size: 12px; color: var(--ink-soft);"></div>
           </div>
           <div class="field">
             <label data-i18n="mode_label">导入模式</label>
@@ -258,8 +381,58 @@
                 <span data-i18n="mode_append">追加模式（保留并追加）</span>
               </label>
             </div>
+            <div id="modeHint" style="margin-top: 6px; font-size: 12px; color: var(--ink-soft);"></div>
           </div>
           <button id="importBtn" data-i18n="import_btn">开始导入</button>
+
+          <div class="field" style="margin-top: 10px;">
+            <label data-i18n="onekey_title">OneKey Batch</label>
+            <textarea
+              id="onekeyIds"
+              rows="4"
+              placeholder="verificationId，每行一个（最多 5 个）"
+              style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); font-size: 14px; resize: vertical;"
+            ></textarea>
+            <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
+              <label style="display:inline-flex; gap:8px; align-items:center;">
+                <input id="onekeyUseLucky" type="checkbox" />
+                <span data-i18n="onekey_useLucky">useLucky</span>
+              </label>
+              <input
+                id="onekeyProgramId"
+                type="text"
+                placeholder="programId（可选）"
+                style="flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); font-size: 14px;"
+              />
+            </div>
+            <button id="onekeyBatchBtn" class="secondary" style="margin-top:10px;" data-i18n="onekey_btn">批量验证</button>
+            <div
+              id="onekeyResult"
+              style="margin-top:10px; padding:10px 12px; border-radius: 12px; border:1px solid var(--line); background:#faf8f4; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; min-height: 48px;"
+            ></div>
+          </div>
+
+          <!-- 2FA 核心修改区域 -->
+          <div class="mini-card">
+            <h3 data-i18n="twofa_title">二步验证工具 (2FA)</h3>
+            <p data-i18n="twofa_desc">输入密钥（Key），下方自动生成当前验证码。</p>
+            <label for="twofaSecret" data-i18n="twofa_secret_label">密钥（Secret Key）</label>
+            <input
+              id="twofaSecret"
+              placeholder="例如：JBSWY3DPEHPK3PXP"
+              autocomplete="off"
+              style="padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); font-size: 14px;"
+            />
+            <div class="code-box">
+              <div class="total-label" style="font-size: 12px; color: var(--ink-soft); text-transform: uppercase;">Current Code</div>
+              <!-- 显示大号验证码的地方 -->
+              <div class="totp-display" id="totpCode" title="点击复制">--- ---</div>
+              <div class="timer"><span data-i18n="twofa_timer">更新倒计时</span>：<span id="twofaCountdown">30</span>s</div>
+            </div>
+            <div class="note" data-i18n="twofa_note" id="twofaStatus" style="text-align: center;">等待输入...</div>
+          </div>
+          <!-- 结束修改区域 -->
+
           <div class="field">
             <label for="refreshSeconds" data-i18n="refresh_label">刷新间隔（秒）</label>
             <input id="refreshSeconds" type="number" min="1" value="5" />
@@ -271,16 +444,34 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel scrollable">
         <h2 data-i18n="status_title">账号状态</h2>
         <div class="summary" id="summary"></div>
+        <div style="display:flex; gap:10px; align-items:center; margin: 12px 0;">
+          <button id="exportSelectedBtn" class="secondary" style="padding:10px 12px; border-radius: 10px;" data-i18n="export_selected">导出选中</button>
+          <button id="resetSelectedBtn" class="secondary" style="padding:10px 12px; border-radius: 10px;" data-i18n="reset_selected">重置选中为IDLE</button>
+          <button id="clearSelectionBtn" class="secondary" style="padding:10px 12px; border-radius: 10px;" data-i18n="clear_select">清空选择</button>
+          <div id="selectedCount" style="margin-left:auto; color: var(--ink-soft); font-size: 13px;"></div>
+        </div>
+        <div id="categoryBar" style="display:flex; gap:10px; align-items:center; margin: 10px 0 14px;">
+          <button class="secondary cat-btn" data-cat="ALL" data-i18n="cat_all" style="padding:10px 12px; border-radius: 10px;">全部</button>
+          <button class="secondary cat-btn" data-cat="QUALIFIED" data-i18n="cat_qualified" style="padding:10px 12px; border-radius: 10px;">资质号</button>
+          <button class="secondary cat-btn" data-cat="INVALID" data-i18n="cat_invalid" style="padding:10px 12px; border-radius: 10px;">普通号</button>
+          <button class="secondary cat-btn" data-cat="FINISHED" data-i18n="cat_finished" style="padding:10px 12px; border-radius: 10px;">成品号</button>
+        </div>
         <table>
           <thead>
             <tr>
+              <th style="width: 44px; text-align: center;">
+                <input id="selectAll" type="checkbox" title="Select all" />
+              </th>
               <th data-i18n="th_email">账号</th>
               <th data-i18n="th_password">密码</th>
               <th data-i18n="th_2fa">2FA 密钥</th>
               <th data-i18n="th_status">状态</th>
+              <th data-i18n="th_sold">是否出售</th>
+              <th data-i18n="th_finished">成品号</th>
+              <th data-i18n="th_actions">操作</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
@@ -291,6 +482,8 @@
     <script>
       const messageEl = document.getElementById("message");
       const fileInput = document.getElementById("file");
+      const fileHintEl = document.getElementById("fileHint");
+      const modeHintEl = document.getElementById("modeHint");
       const importBtn = document.getElementById("importBtn");
       const applyRefreshBtn = document.getElementById("applyRefresh");
       const manualRefreshBtn = document.getElementById("manualRefresh");
@@ -298,9 +491,20 @@
       const refreshSecondsInput = document.getElementById("refreshSeconds");
       const tableBody = document.getElementById("tableBody");
       const summaryEl = document.getElementById("summary");
-      const langButtons = document.querySelectorAll(".lang-switch button");
+      const selectedCountEl = document.getElementById("selectedCount");
+      const selectAllEl = document.getElementById("selectAll");
+      const exportSelectedBtn = document.getElementById("exportSelectedBtn");
+      const resetSelectedBtn = document.getElementById("resetSelectedBtn");
+      const clearSelectionBtn = document.getElementById("clearSelectionBtn");
+      const themeToggleBtn = document.getElementById("themeToggle");
+      const langButtons = document.querySelectorAll(".lang-switch button[data-lang]");
+      const categoryBar = document.getElementById("categoryBar");
       let refreshTimer = null;
       let currentLang = "zh";
+      let editingEmail = null;
+      let lastAccounts = [];
+      const selectedEmails = new Set();
+      let currentCategory = "ALL";
 
       const i18n = {
         zh: {
@@ -309,10 +513,30 @@
           subtitle: "导入账号 txt 文件，实时查看状态变化。",
           import_title: "导入与刷新",
           file_label: "TXT 文件",
+          file_hint_none: "未选择文件（支持多选）",
+          file_hint_count: (n) => `已选择 ${n} 个文件`,
           mode_label: "导入模式",
           mode_overwrite: "覆盖模式（清空后导入）",
           mode_append: "追加模式（保留并追加）",
+          mode_overwrite_disabled: "当前为 PostgreSQL 存储，已禁用覆盖模式（避免清空数据库）。",
           import_btn: "开始导入",
+          cat_all: "全部",
+          cat_qualified: "资质号",
+          cat_invalid: "普通号",
+          cat_finished: "成品号",
+          onekey_title: "OneKey 批量验证",
+          onekey_btn: "批量验证",
+          onekey_useLucky: "useLucky",
+          msg_onekey_too_many: "最多支持 5 个 verificationId",
+          msg_onekey_missing: "请先输入 verificationId（每行一个）",
+          msg_onekey_running: "正在请求 OneKey…",
+          msg_onekey_fail: "OneKey 请求失败",
+          msg_onekey_disabled: "OneKey 功能已禁用（缺少后端接口）",
+          twofa_title: "二步验证工具 (2FA)",
+          twofa_desc: "输入密钥，自动计算并显示当前验证码。",
+          twofa_secret_label: "密钥（Secret Key）",
+          twofa_timer: "更新倒计时",
+          twofa_note: "点击验证码可直接复制到剪贴板。",
           refresh_label: "刷新间隔（秒）",
           apply_refresh: "应用刷新",
           manual_refresh: "立即刷新",
@@ -322,11 +546,24 @@
           th_password: "密码",
           th_2fa: "2FA 密钥",
           th_status: "状态",
+          th_sold: "是否出售",
+          th_finished: "成品号",
+          th_actions: "操作",
+          sold_yes: "已售",
+          sold_no: "未售",
+          finished_yes: "是",
+          finished_no: "否",
           summary_total: "总数",
           summary_idle: "空闲",
           summary_checking: "检查中",
           summary_qualified: "合格",
           summary_invalid: "无效",
+          summary_qualified_normal: "资质号",
+          summary_invalid_normal: "普通号",
+          summary_finished_total: "成品号",
+          status_finished_qualified: "成品-合格",
+          status_finished_invalid: "成品-无效",
+          status_finished_suffix: "（成品）",
           msg_refreshed: "已刷新",
           msg_refresh_fail: "刷新失败，请检查服务是否运行。",
           msg_file_missing: "请先选择 txt 文件。",
@@ -337,6 +574,35 @@
           msg_reset_done: (count) => `已重置 ${count} 个检查中账号`,
           msg_reset_fail: "重置失败，请稍后重试。",
           msg_reset_confirm: "确认将所有检查中账号重置为空闲？",
+          msg_sold_updated: "已更新出售状态",
+          msg_sold_update_fail: "更新出售状态失败",
+          delete_btn: "删除",
+          msg_delete_confirm: "确认删除该账号？此操作不可撤销。",
+          msg_delete_done: "已删除账号",
+          msg_delete_fail: "删除失败",
+          edit_hint: "双击行可编辑",
+          edit_save: "保存",
+          edit_cancel: "取消",
+          msg_edit_saved: "已保存",
+          msg_edit_save_fail: "保存失败",
+          export_btn: "导出",
+          msg_export_done: "已复制导出内容",
+          msg_export_fail: "导出失败",
+          export_selected: "导出选中",
+          reset_selected: "重置选中为IDLE",
+          clear_select: "清空选择",
+          selected_count: (n) => `已选中 ${n} 条`,
+          msg_export_none: "请先选择要导出的账号",
+          msg_reset_selected_none: "请先选择要重置的账号",
+          msg_reset_selected_confirm: (n) => `确认将选中的 ${n} 个账号状态重置为 IDLE？`,
+          msg_reset_selected_done: (n) => `已重置 ${n} 个账号为 IDLE`,
+          msg_reset_selected_fail: "批量重置失败",
+          msg_status_updated: "已更新状态",
+          msg_status_update_fail: "更新状态失败",
+          msg_cell_copied: "已复制",
+          msg_cell_copy_fail: "复制失败",
+          theme_dark: "夜间",
+          theme_light: "日间",
           empty_table: "暂无账号",
         },
         en: {
@@ -345,10 +611,30 @@
           subtitle: "Import TXT accounts and track status changes in real time.",
           import_title: "Import & Refresh",
           file_label: "TXT File",
+          file_hint_none: "No file selected (multi-select supported)",
+          file_hint_count: (n) => `${n} file(s) selected`,
           mode_label: "Import Mode",
           mode_overwrite: "Overwrite (clear then import)",
           mode_append: "Append (keep and add)",
+          mode_overwrite_disabled: "PostgreSQL storage detected; overwrite mode is disabled to avoid wiping the database.",
           import_btn: "Import",
+          cat_all: "All",
+          cat_qualified: "Qualified",
+          cat_invalid: "Normal",
+          cat_finished: "Finished",
+          onekey_title: "OneKey Batch",
+          onekey_btn: "Batch Verify",
+          onekey_useLucky: "useLucky",
+          msg_onekey_too_many: "Max 5 verificationIds",
+          msg_onekey_missing: "Please enter verificationIds (one per line)",
+          msg_onekey_running: "Calling OneKey…",
+          msg_onekey_fail: "OneKey request failed",
+          msg_onekey_disabled: "OneKey is disabled (missing backend endpoint).",
+          twofa_title: "2FA Code Generator",
+          twofa_desc: "Enter Secret Key to generate the current 6-digit code.",
+          twofa_secret_label: "Secret Key",
+          twofa_timer: "Refresh in",
+          twofa_note: "Click the code to copy to clipboard.",
           refresh_label: "Refresh Interval (seconds)",
           apply_refresh: "Apply Refresh",
           manual_refresh: "Refresh Now",
@@ -358,11 +644,24 @@
           th_password: "Password",
           th_2fa: "2FA Token",
           th_status: "Status",
+          th_sold: "Sold",
+          th_finished: "Finished",
+          th_actions: "Actions",
+          sold_yes: "Sold",
+          sold_no: "Unsold",
+          finished_yes: "Yes",
+          finished_no: "No",
           summary_total: "Total",
           summary_idle: "Idle",
           summary_checking: "Checking",
           summary_qualified: "Qualified",
           summary_invalid: "Invalid",
+          summary_qualified_normal: "Qualified",
+          summary_invalid_normal: "Normal",
+          summary_finished_total: "Finished",
+          status_finished_qualified: "FINISHED-QUALIFIED",
+          status_finished_invalid: "FINISHED-INVALID",
+          status_finished_suffix: "(finished)",
           msg_refreshed: "Refreshed",
           msg_refresh_fail: "Refresh failed. Please check if the service is running.",
           msg_file_missing: "Please select a TXT file first.",
@@ -373,6 +672,35 @@
           msg_reset_done: (count) => `Reset ${count} checking accounts`,
           msg_reset_fail: "Reset failed. Please try again.",
           msg_reset_confirm: "Reset all checking accounts to idle?",
+          msg_sold_updated: "Sold flag updated",
+          msg_sold_update_fail: "Failed to update sold flag",
+          delete_btn: "Delete",
+          msg_delete_confirm: "Delete this account? This cannot be undone.",
+          msg_delete_done: "Account deleted",
+          msg_delete_fail: "Delete failed",
+          edit_hint: "Double click row to edit",
+          edit_save: "Save",
+          edit_cancel: "Cancel",
+          msg_edit_saved: "Saved",
+          msg_edit_save_fail: "Save failed",
+          export_btn: "Export",
+          msg_export_done: "Export copied",
+          msg_export_fail: "Export failed",
+          export_selected: "Export selected",
+          reset_selected: "Reset selected to IDLE",
+          clear_select: "Clear",
+          selected_count: (n) => `${n} selected`,
+          msg_export_none: "Select accounts first",
+          msg_reset_selected_none: "Select accounts to reset first",
+          msg_reset_selected_confirm: (n) => `Reset status to IDLE for ${n} selected account(s)?`,
+          msg_reset_selected_done: (n) => `Reset ${n} account(s) to IDLE`,
+          msg_reset_selected_fail: "Bulk reset failed",
+          msg_status_updated: "Status updated",
+          msg_status_update_fail: "Failed to update status",
+          msg_cell_copied: "Copied",
+          msg_cell_copy_fail: "Copy failed",
+          theme_dark: "Dark",
+          theme_light: "Light",
           empty_table: "No accounts",
         },
       };
@@ -382,14 +710,86 @@
         messageEl.style.color = tone === "error" ? "#8b2b2b" : "";
       }
 
+      function getCurrentTheme() {
+        return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+      }
+
+      function setTheme(theme, persist = true) {
+        const normalized = theme === "dark" ? "dark" : "light";
+        if (normalized === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        } else {
+          document.documentElement.removeAttribute("data-theme");
+        }
+        if (persist) {
+          localStorage.setItem("theme", normalized);
+        }
+      }
+
+      function updateThemeToggleText() {
+        const t = i18n[currentLang];
+        const theme = getCurrentTheme();
+        themeToggleBtn.textContent = theme === "dark" ? t.theme_light : t.theme_dark;
+      }
+
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {
+          try {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            return true;
+          } catch {
+            return false;
+          }
+        }
+      }
+
+      function updateSelectionUI() {
+        const t = i18n[currentLang];
+        selectedCountEl.textContent = t.selected_count(selectedEmails.size);
+        const total = getFilteredAccounts().length;
+        const selected = selectedEmails.size;
+        selectAllEl.checked = total > 0 && selected === total;
+        selectAllEl.indeterminate = selected > 0 && selected < total;
+      }
+
+      function getFilteredAccounts() {
+        const list = Array.isArray(lastAccounts) ? lastAccounts : [];
+        if (currentCategory === "QUALIFIED") {
+          return list.filter((a) => a && a.status === "QUALIFIED" && !a.finished);
+        }
+        if (currentCategory === "INVALID") {
+          return list.filter((a) => a && a.status === "INVALID" && !a.finished);
+        }
+        if (currentCategory === "FINISHED") {
+          return list.filter((a) => a && a.finished);
+        }
+        return list;
+      }
+
       function renderSummary(counts, total) {
         const t = i18n[currentLang];
+        const qualifiedNormal = lastAccounts.filter((a) => a && !a.finished && a.status === "QUALIFIED").length;
+        const invalidNormal = lastAccounts.filter((a) => a && !a.finished && a.status === "INVALID").length;
+        const finishedTotal = lastAccounts.filter((a) => a && a.finished).length;
         const items = [
           { label: t.summary_total, value: total },
           { label: t.summary_idle, value: counts.IDLE || 0 },
           { label: t.summary_checking, value: counts.CHECKING || 0 },
           { label: t.summary_qualified, value: counts.QUALIFIED || 0 },
           { label: t.summary_invalid, value: counts.INVALID || 0 },
+          { label: t.summary_qualified_normal, value: qualifiedNormal },
+          { label: t.summary_invalid_normal, value: invalidNormal },
+          { label: t.summary_finished_total, value: finishedTotal },
         ];
         summaryEl.innerHTML = items
           .map(
@@ -399,23 +799,386 @@
           .join("");
       }
 
+      function statusLabel(account) {
+        const t = i18n[currentLang];
+        const s = account.status || "";
+        if (account.finished) {
+          if (s === "QUALIFIED") return t.status_finished_qualified;
+          if (s === "INVALID") return t.status_finished_invalid;
+          return `${s} ${t.status_finished_suffix}`;
+        }
+        return s;
+      }
+
       function renderTable(accounts) {
         const t = i18n[currentLang];
         if (!accounts || accounts.length === 0) {
-          tableBody.innerHTML = `<tr><td colspan="4">${t.empty_table}</td></tr>`;
+          tableBody.innerHTML = `<tr><td colspan="8">${t.empty_table}</td></tr>`;
+          updateSelectionUI();
           return;
         }
+
+        const currentEmails = new Set(accounts.map((a) => a.email));
+        Array.from(selectedEmails).forEach((e) => {
+          if (!currentEmails.has(e)) selectedEmails.delete(e);
+        });
+        updateSelectionUI();
+
         tableBody.innerHTML = accounts
           .map(
-            (account) =>
-              `<tr>
-                <td>${account.email}</td>
-                <td>${account.password || ""}</td>
-                <td>${account.authenticatorToken || ""}</td>
-                <td><span class="status-chip ${account.status}">${account.status}</span></td>
-              </tr>`
+            (account) => {
+              const isEditing = editingEmail && account.email === editingEmail;
+              if (isEditing) {
+                return `<tr data-email="${account.email}" class="row-editing">
+                <td style="text-align:center;">
+                  <input type="checkbox" class="row-select" data-email="${account.email}" ${
+                    selectedEmails.has(account.email) ? "checked" : ""
+                  } />
+                </td>
+                <td class="copyable" data-copy-type="email" title="Click to copy">${account.email}</td>
+                <td><input class="edit-password" type="text" value="${(account.password || "").replaceAll('"', "&quot;")}" style="width:100%; padding:8px 10px; border-radius:10px; border:1px solid var(--line);" /></td>
+                <td><input class="edit-2fa" type="text" value="${(account.authenticatorToken || "").replaceAll('"', "&quot;")}" style="width:100%; padding:8px 10px; border-radius:10px; border:1px solid var(--line);" /></td>
+                <td>
+                  <select class="edit-status" style="width:100%; padding:8px 10px; border-radius:10px; border:1px solid var(--line);">
+                    ${["IDLE", "CHECKING", "QUALIFIED", "INVALID"]
+                      .map((s) => `<option value="${s}" ${s === account.status ? "selected" : ""}>${s}</option>`)
+                      .join("")}
+                  </select>
+                </td>
+                <td>
+                  <label style="display:inline-flex;align-items:center;gap:8px;">
+                    <input type="checkbox" class="sold-toggle" data-email="${account.email}" ${
+                      account.sold ? "checked" : ""
+                    } />
+                    <span>${account.sold ? t.sold_yes : t.sold_no}</span>
+                  </label>
+                </td>
+                <td>
+                  <label style="display:inline-flex;align-items:center;gap:8px;">
+                    <input type="checkbox" class="finished-toggle" data-email="${account.email}" ${
+                      account.finished ? "checked" : ""
+                    } />
+                    <span>${account.finished ? t.finished_yes : t.finished_no}</span>
+                  </label>
+                </td>
+                <td>
+                  <button class="secondary export-btn" data-email="${account.email}" style="padding:8px 12px;border-radius:10px;">${t.export_btn}</button>
+                  <button class="secondary edit-save" data-email="${account.email}" style="padding:8px 12px;border-radius:10px;">${t.edit_save}</button>
+                  <button class="secondary edit-cancel" data-email="${account.email}" style="padding:8px 12px;border-radius:10px; margin-left:8px;">${t.edit_cancel}</button>
+                </td>
+              </tr>`;
+              }
+              return `<tr data-email="${account.email}">
+                <td style="text-align:center;">
+                  <input type="checkbox" class="row-select" data-email="${account.email}" ${
+                    selectedEmails.has(account.email) ? "checked" : ""
+                  } />
+                </td>
+                <td class="copyable" data-copy-type="email" title="Click to copy">${account.email}</td>
+                <td class="copyable" data-copy-type="password" title="Click to copy">${account.password || ""}</td>
+                <td class="copyable" data-copy-type="token" title="Click to copy">${account.authenticatorToken || ""}</td>
+                <td class="status-cell" data-email="${account.email}"><span class="status-chip ${account.status}">${statusLabel(account)}</span></td>
+                <td>
+                  <label style="display:inline-flex;align-items:center;gap:8px;">
+                    <input type="checkbox" class="sold-toggle" data-email="${account.email}" ${
+                      account.sold ? "checked" : ""
+                    } />
+                    <span>${account.sold ? t.sold_yes : t.sold_no}</span>
+                  </label>
+                </td>
+                <td>
+                  <label style="display:inline-flex;align-items:center;gap:8px;">
+                    <input type="checkbox" class="finished-toggle" data-email="${account.email}" ${
+                      account.finished ? "checked" : ""
+                    } />
+                    <span>${account.finished ? t.finished_yes : t.finished_no}</span>
+                  </label>
+                </td>
+                <td>
+                  <button class="secondary export-btn" data-email="${account.email}" style="padding:8px 12px;border-radius:10px;">
+                    ${t.export_btn}
+                  </button>
+                  <button class="secondary delete-btn" data-email="${account.email}" style="padding:8px 12px;border-radius:10px;">
+                    ${t.delete_btn}
+                  </button>
+                </td>
+              </tr>`;
+            }
           )
           .join("");
+
+        tableBody.querySelectorAll(".row-select").forEach((el) => {
+          el.addEventListener("click", (e) => e.stopPropagation());
+          el.addEventListener("change", (event) => {
+            const input = event.target;
+            const email = input.getAttribute("data-email");
+            if (input.checked) {
+              selectedEmails.add(email);
+            } else {
+              selectedEmails.delete(email);
+            }
+            updateSelectionUI();
+          });
+        });
+
+        tableBody.querySelectorAll(".copyable").forEach((el) => {
+          el.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            const type = el.getAttribute("data-copy-type");
+            const row = el.closest("tr");
+            let text = (el.textContent || "").trim();
+            if (type === "email" && row) {
+              text = row.getAttribute("data-email") || text;
+            }
+            if (!text) return;
+            const ok = await copyText(text);
+            if (ok) {
+              setMessage(i18n[currentLang].msg_cell_copied);
+            } else {
+              setMessage(i18n[currentLang].msg_cell_copy_fail, "error");
+            }
+          });
+        });
+
+        async function updateAccountStatus(email, status) {
+          const t = i18n[currentLang];
+          try {
+            const resp = await fetch("/api/status", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, status }),
+            });
+            if (!resp.ok) {
+              throw new Error("status failed");
+            }
+            setMessage(t.msg_status_updated);
+            await fetchAccounts();
+          } catch (e) {
+            setMessage(t.msg_status_update_fail, "error");
+          }
+        }
+
+        // Double-click status cell to change status immediately (no Save button needed).
+        tableBody.querySelectorAll(".status-cell").forEach((cell) => {
+          cell.addEventListener("dblclick", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const email = cell.getAttribute("data-email");
+            if (!email) return;
+            if (cell.querySelector("select")) return;
+            const current = (lastAccounts.find((a) => a && a.email === email)?.status || "IDLE").toString();
+            const select = document.createElement("select");
+            select.style.width = "100%";
+            select.style.padding = "8px 10px";
+            select.style.borderRadius = "10px";
+            select.style.border = "1px solid var(--line)";
+            ["IDLE", "CHECKING", "QUALIFIED", "INVALID"].forEach((s) => {
+              const opt = document.createElement("option");
+              opt.value = s;
+              opt.textContent = s;
+              if (s === current) opt.selected = true;
+              select.appendChild(opt);
+            });
+
+            const original = cell.innerHTML;
+            cell.innerHTML = "";
+            cell.appendChild(select);
+            select.focus();
+
+            const cancel = () => {
+              cell.innerHTML = original;
+            };
+
+            select.addEventListener("keydown", (e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancel();
+              }
+              if (e.key === "Enter") {
+                e.preventDefault();
+                select.blur();
+              }
+            });
+
+            select.addEventListener("change", async () => {
+              const next = select.value || current;
+              await updateAccountStatus(email, next);
+            });
+
+            select.addEventListener("blur", () => {
+              // If user clicks away without changing, restore the chip.
+              cancel();
+            });
+          });
+        });
+
+        // In row-edit mode, status changes are saved immediately as well.
+        tableBody.querySelectorAll(".edit-status").forEach((el) => {
+          el.addEventListener("change", async (event) => {
+            event.stopPropagation();
+            const row = el.closest("tr[data-email]");
+            const email = row ? row.getAttribute("data-email") : null;
+            if (!email) return;
+            const status = el.value || "";
+            if (!status) return;
+            await updateAccountStatus(email, status);
+          });
+        });
+
+        tableBody.querySelectorAll(".sold-toggle").forEach((el) => {
+          el.addEventListener("change", async (event) => {
+            const input = event.target;
+            const email = input.getAttribute("data-email");
+            const sold = input.checked;
+            try {
+              const resp = await fetch("/api/sold", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, sold }),
+              });
+              if (!resp.ok) {
+                throw new Error("update failed");
+              }
+              setMessage(i18n[currentLang].msg_sold_updated);
+              await fetchAccounts();
+            } catch (e) {
+              input.checked = !sold;
+              setMessage(i18n[currentLang].msg_sold_update_fail, "error");
+            }
+          });
+        });
+
+        tableBody.querySelectorAll(".finished-toggle").forEach((el) => {
+          el.addEventListener("change", async (event) => {
+            const input = event.target;
+            const email = input.getAttribute("data-email");
+            const finished = input.checked;
+            try {
+              const resp = await fetch("/api/finished", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, finished }),
+              });
+              if (!resp.ok) {
+                throw new Error("update failed");
+              }
+              await fetchAccounts();
+            } catch (e) {
+              input.checked = !finished;
+            }
+          });
+        });
+
+        tableBody.querySelectorAll(".export-btn").forEach((el) => {
+          el.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const btn = event.target.closest(".export-btn");
+            const email = btn.getAttribute("data-email");
+            const row = btn.closest("tr");
+            const passwordInput = row.querySelector(".edit-password");
+            const tokenInput = row.querySelector(".edit-2fa");
+            const password = passwordInput ? passwordInput.value : (row.children[2]?.textContent || "");
+            const token = tokenInput ? tokenInput.value : (row.children[3]?.textContent || "");
+            const text = `|${email}|${password}|${token}|`;
+            const ok = await copyText(text);
+            if (ok) {
+              setMessage(i18n[currentLang].msg_export_done);
+            } else {
+              setMessage(i18n[currentLang].msg_export_fail, "error");
+            }
+          });
+        });
+
+        tableBody.querySelectorAll("tr[data-email]").forEach((row) => {
+          row.addEventListener("dblclick", (event) => {
+            const target = event.target;
+            if (
+              target.closest("button") ||
+              target.closest("input") ||
+              target.closest("label") ||
+              target.closest(".status-cell") ||
+              target.classList.contains("sold-toggle")
+            ) {
+              return;
+            }
+            const email = row.getAttribute("data-email");
+            editingEmail = email;
+            setMessage(t.edit_hint);
+            renderTable(accounts);
+          });
+        });
+
+        tableBody.querySelectorAll(".edit-cancel").forEach((el) => {
+          el.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            editingEmail = null;
+            renderTable(accounts);
+          });
+        });
+
+        tableBody.querySelectorAll(".edit-save").forEach((el) => {
+          el.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const email = el.getAttribute("data-email");
+            const row = el.closest("tr");
+            const password = row.querySelector(".edit-password").value || "";
+            const authenticatorToken = row.querySelector(".edit-2fa").value || "";
+            const status = row.querySelector(".edit-status")?.value || "";
+            try {
+              const content = `${email};${password};${authenticatorToken}\n`;
+              const resp = await fetch("/api/import", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode: "APPEND", content }),
+              });
+              if (!resp.ok) {
+                throw new Error("save failed");
+              }
+              if (status) {
+                const statusResp = await fetch("/api/status", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ email, status }),
+                });
+                if (!statusResp.ok) {
+                  throw new Error("status failed");
+                }
+              }
+              editingEmail = null;
+              setMessage(t.msg_edit_saved);
+              await fetchAccounts();
+            } catch (e) {
+              setMessage(t.msg_edit_save_fail, "error");
+            }
+          });
+        });
+
+        tableBody.querySelectorAll(".delete-btn").forEach((el) => {
+          el.addEventListener("click", async (event) => {
+            const btn = event.target.closest(".delete-btn");
+            const email = btn.getAttribute("data-email");
+            if (!window.confirm(i18n[currentLang].msg_delete_confirm)) {
+              return;
+            }
+            try {
+              const resp = await fetch("/api/delete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email }),
+              });
+              if (!resp.ok) {
+                throw new Error("delete failed");
+              }
+              setMessage(i18n[currentLang].msg_delete_done);
+              await fetchAccounts();
+            } catch (e) {
+              setMessage(i18n[currentLang].msg_delete_fail, "error");
+            }
+          });
+        });
       }
 
       async function fetchAccounts() {
@@ -425,12 +1188,18 @@
             throw new Error("加载失败");
           }
           const data = await response.json();
+          lastAccounts = data.accounts || [];
           renderSummary(data.counts || {}, data.total || 0);
-          renderTable(data.accounts || []);
+          renderTable(getFilteredAccounts());
           setMessage(i18n[currentLang].msg_refreshed);
         } catch (error) {
           setMessage(i18n[currentLang].msg_refresh_fail, "error");
         }
+      }
+
+      function setOneKeyResult(text) {
+        const el = document.getElementById("onekeyResult");
+        el.textContent = text || "";
       }
 
       function scheduleRefresh() {
@@ -442,28 +1211,231 @@
         setMessage(i18n[currentLang].msg_refresh_set(seconds));
       }
 
+      function updateFileHint() {
+        if (!fileHintEl) return;
+        const files = Array.from(fileInput.files || []);
+        const t = i18n[currentLang];
+        if (files.length === 0) {
+          fileHintEl.textContent = t.file_hint_none;
+          return;
+        }
+        fileHintEl.textContent = t.file_hint_count(files.length);
+      }
+
+      async function syncImportModeCapabilities() {
+        if (!modeHintEl) return;
+        modeHintEl.textContent = "";
+        try {
+          const resp = await fetch("/api/info");
+          if (!resp.ok) return;
+          const info = await resp.json();
+          const storage = info && info.storage ? String(info.storage) : "";
+          const allowOverwrite = !!(info && info.pgAllowOverwrite);
+          const overwriteRadio = document.querySelector('input[name="mode"][value="OVERWRITE"]');
+          if (!overwriteRadio) return;
+          if (storage === "postgres" && !allowOverwrite) {
+            overwriteRadio.disabled = true;
+            if (overwriteRadio.checked) {
+              const appendRadio = document.querySelector('input[name="mode"][value="APPEND"]');
+              if (appendRadio) appendRadio.checked = true;
+            }
+            modeHintEl.textContent = i18n[currentLang].mode_overwrite_disabled;
+          }
+        } catch {}
+      }
+
       importBtn.addEventListener("click", async () => {
-        const file = fileInput.files[0];
-        if (!file) {
+        const files = Array.from(fileInput.files || []);
+        if (files.length === 0) {
           setMessage(i18n[currentLang].msg_file_missing, "error");
           return;
         }
-        const mode = document.querySelector("input[name='mode']:checked").value;
         try {
-          const content = await file.text();
-          const response = await fetch("/api/import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode, content }),
-          });
-          if (!response.ok) {
-            throw new Error("导入失败");
+          const selectedMode = document.querySelector("input[name='mode']:checked").value;
+          let totalAdded = 0;
+          let totalUpdated = 0;
+          let totalSkipped = 0;
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const content = await file.text();
+            const mode = i === 0 ? selectedMode : selectedMode === "OVERWRITE" ? "APPEND" : selectedMode;
+            const response = await fetch("/api/import", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mode, content }),
+            });
+            if (!response.ok) {
+              throw new Error(`导入失败: ${file.name}`);
+            }
+            const result = await response.json();
+            totalAdded += Number(result.added || 0);
+            totalUpdated += Number(result.updated || 0);
+            totalSkipped += Number(result.skipped || 0);
           }
-          const result = await response.json();
-          setMessage(i18n[currentLang].msg_import_done(result.added, result.updated, result.skipped));
+          setMessage(i18n[currentLang].msg_import_done(totalAdded, totalUpdated, totalSkipped));
           await fetchAccounts();
         } catch (error) {
           setMessage(i18n[currentLang].msg_import_fail, "error");
+        }
+      });
+
+      fileInput.addEventListener("change", updateFileHint);
+
+      // OneKey 后端源码缺失：暂时禁用按钮，避免页面报错。
+      const oneKeyBatchBtn = document.getElementById("onekeyBatchBtn");
+      const oneKeyIdsEl = document.getElementById("onekeyIds");
+      const oneKeyUseLuckyEl = document.getElementById("onekeyUseLucky");
+      const oneKeyProgramIdEl = document.getElementById("onekeyProgramId");
+      if (oneKeyBatchBtn) {
+        oneKeyBatchBtn.disabled = true;
+        oneKeyBatchBtn.addEventListener("click", (event) => {
+          event.preventDefault();
+          setMessage(i18n[currentLang].msg_onekey_disabled, "error");
+        });
+      }
+      if (oneKeyIdsEl) oneKeyIdsEl.disabled = true;
+      if (oneKeyUseLuckyEl) oneKeyUseLuckyEl.disabled = true;
+      if (oneKeyProgramIdEl) oneKeyProgramIdEl.disabled = true;
+
+      // --- 二步验证逻辑修改 ---
+      const twofaSecretInput = document.getElementById("twofaSecret");
+      const totpCodeEl = document.getElementById("totpCode");
+      const twofaCountdownEl = document.getElementById("twofaCountdown");
+      const twofaStatusEl = document.getElementById("twofaStatus");
+
+      function normalizeBase32(secret) {
+        return (secret || "")
+          .toUpperCase()
+          .replace(/[\s\-]/g, "") // 移除空格和连字符
+          .trim();
+      }
+
+      function refreshTwoFa() {
+        const secretStr = normalizeBase32(twofaSecretInput.value);
+        const now = Date.now();
+        const period = 30;
+        const remaining = period - Math.floor((now / 1000) % period);
+        
+        twofaCountdownEl.textContent = String(remaining);
+
+        if (!secretStr) {
+          totpCodeEl.textContent = "--- ---";
+          twofaStatusEl.textContent = i18n[currentLang].twofa_desc;
+          return;
+        }
+
+        try {
+          // 使用 OTPAuth 库生成 TOTP
+          // 假设标准的 TOTP 参数：SHA1, 6位, 30秒
+          const totp = new OTPAuth.TOTP({
+            issuer: 'Local',
+            label: 'Account',
+            algorithm: 'SHA1',
+            digits: 6,
+            period: period,
+            secret: OTPAuth.Secret.fromBase32(secretStr)
+          });
+          
+          const token = totp.generate();
+          // 在中间加个空格看起来更舒服
+          totpCodeEl.textContent = token.slice(0, 3) + " " + token.slice(3);
+          twofaStatusEl.textContent = i18n[currentLang].twofa_note;
+          twofaStatusEl.style.color = "var(--ink-soft)";
+        } catch (e) {
+          totpCodeEl.textContent = "Error";
+          twofaStatusEl.textContent = "密钥格式错误 (Invalid Secret)";
+          twofaStatusEl.style.color = "#8b2b2b";
+        }
+      }
+
+      twofaSecretInput.addEventListener("input", refreshTwoFa);
+      
+      // 点击验证码复制
+      totpCodeEl.addEventListener("click", async () => {
+        const text = totpCodeEl.textContent.replace(" ", "").trim();
+        if (!text || text === "------" || text === "Error") return;
+        
+        try {
+          await navigator.clipboard.writeText(text);
+          const original = totpCodeEl.textContent;
+          twofaStatusEl.textContent = "已复制 (Copied)";
+          
+          // 短暂显示复制反馈后恢复
+          setTimeout(() => {
+             // 只有当用户没有修改输入时才恢复提示
+             if(twofaStatusEl.textContent === "已复制 (Copied)") {
+                 twofaStatusEl.textContent = i18n[currentLang].twofa_note;
+             }
+          }, 1500);
+        } catch {}
+      });
+
+      setInterval(refreshTwoFa, 1000);
+      refreshTwoFa();
+      // --- 二步验证逻辑修改结束 ---
+
+      selectAllEl.addEventListener("change", () => {
+        if (selectAllEl.checked) {
+          getFilteredAccounts().forEach((a) => selectedEmails.add(a.email));
+        } else {
+          getFilteredAccounts().forEach((a) => selectedEmails.delete(a.email));
+        }
+        renderTable(getFilteredAccounts());
+      });
+
+      clearSelectionBtn.addEventListener("click", () => {
+        selectedEmails.clear();
+        renderTable(getFilteredAccounts());
+      });
+
+      exportSelectedBtn.addEventListener("click", async () => {
+        const t = i18n[currentLang];
+        const chosen = lastAccounts.filter((a) => selectedEmails.has(a.email));
+        if (chosen.length === 0) {
+          setMessage(t.msg_export_none, "error");
+          return;
+        }
+        const lines = chosen.map((a) => {
+          const row = tableBody.querySelector(`tr[data-email="${a.email}"]`);
+          const pwInput = row ? row.querySelector(".edit-password") : null;
+          const tokInput = row ? row.querySelector(".edit-2fa") : null;
+          const pw = pwInput ? pwInput.value : a.password || "";
+          const tok = tokInput ? tokInput.value : a.authenticatorToken || "";
+          return `|${a.email}|${pw}|${tok}|`;
+        });
+        const ok = await copyText(lines.join("\n"));
+        if (ok) {
+          setMessage(t.msg_export_done);
+        } else {
+          setMessage(t.msg_export_fail, "error");
+        }
+      });
+
+      resetSelectedBtn.addEventListener("click", async () => {
+        const t = i18n[currentLang];
+        const emails = Array.from(selectedEmails);
+        if (emails.length === 0) {
+          setMessage(t.msg_reset_selected_none, "error");
+          return;
+        }
+        if (!window.confirm(t.msg_reset_selected_confirm(emails.length))) {
+          return;
+        }
+        try {
+          const resp = await fetch("/api/restore-statuses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: emails.map((email) => ({ email, status: "IDLE" })),
+            }),
+          });
+          if (!resp.ok) {
+            throw new Error("bulk reset failed");
+          }
+          setMessage(t.msg_reset_selected_done(emails.length));
+          await fetchAccounts();
+        } catch (e) {
+          setMessage(t.msg_reset_selected_fail, "error");
         }
       });
 
@@ -499,8 +1471,31 @@
             node.textContent = value;
           }
         });
+        updateFileHint();
+        syncImportModeCapabilities();
+        syncCategoryBar();
         renderSummary({}, 0);
         fetchAccounts();
+        refreshTwoFa(); // Update static text in 2FA box
+        updateThemeToggleText();
+      }
+
+      function syncCategoryBar() {
+        if (!categoryBar) return;
+        categoryBar.querySelectorAll(".cat-btn").forEach((btn) => {
+          btn.setAttribute("data-active", btn.getAttribute("data-cat") === currentCategory ? "true" : "false");
+        });
+      }
+
+      if (categoryBar) {
+        categoryBar.querySelectorAll(".cat-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const next = btn.getAttribute("data-cat") || "ALL";
+            currentCategory = next;
+            syncCategoryBar();
+            renderTable(getFilteredAccounts());
+          });
+        });
       }
 
       langButtons.forEach((btn) => {
@@ -509,7 +1504,23 @@
         });
       });
 
+      themeToggleBtn.addEventListener("click", () => {
+        const next = getCurrentTheme() === "dark" ? "light" : "dark";
+        setTheme(next, true);
+        updateThemeToggleText();
+      });
+
+      const savedTheme = localStorage.getItem("theme");
+      if (savedTheme) {
+        setTheme(savedTheme, false);
+      } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        setTheme("dark", false);
+      }
+
       applyLanguage(currentLang);
+      updateFileHint();
+      syncImportModeCapabilities();
+      syncCategoryBar();
       scheduleRefresh();
     </script>
   </body>

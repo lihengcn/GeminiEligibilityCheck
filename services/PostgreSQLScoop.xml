@@ -1,0 +1,20 @@
+<service>
+  <id>PostgreSQLScoop</id>
+  <name>PostgreSQL (Scoop)</name>
+  <description>PostgreSQL started from Scoop installation</description>
+
+  <!-- postgres refuses to run as LocalSystem/Administrators; run as a low-privilege built-in account -->
+  <serviceaccount>
+    <username>NT AUTHORITY\NetworkService</username>
+  </serviceaccount>
+
+  <workingdirectory>C:\Scoop\apps\postgresql\current\bin</workingdirectory>
+  <executable>C:\Scoop\apps\postgresql\current\bin\postgres.exe</executable>
+  <arguments>-D "C:\Scoop\apps\postgresql\current\data"</arguments>
+
+  <stopexecutable>C:\Scoop\apps\postgresql\current\bin\pg_ctl.exe</stopexecutable>
+  <stoparguments>-D "C:\Scoop\apps\postgresql\current\data" -m fast stop</stoparguments>
+
+  <log mode="roll"></log>
+  <onfailure action="restart" delay="5 sec"/>
+</service>

@@ -28,7 +28,9 @@ public class StatusView {
                     account.getEmail(),
                     account.getPassword(),
                     account.getAuthenticatorToken(),
-                    account.getStatus().name()
+                    account.getStatus().name(),
+                    account.isSold(),
+                    account.isFinished()
             ));
             countMap.put(account.getStatus(), countMap.get(account.getStatus()) + 1);
         }
@@ -42,5 +44,7 @@ public class StatusView {
         private String password;
         private String authenticatorToken;
         private String status;
+        private boolean sold;
+        private boolean finished;
     }
 }

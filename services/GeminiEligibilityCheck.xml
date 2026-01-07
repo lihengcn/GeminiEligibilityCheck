@@ -1,0 +1,12 @@
+<service>
+  <id>GeminiEligibilityCheck</id>
+  <name>GeminiEligibilityCheck</name>
+  <description>Spring Boot GeminiEligibilityCheck (PostgreSQL profile)</description>
+
+  <workingdirectory>D:\gem</workingdirectory>
+  <executable>C:\Scoop\apps\temurin17-jdk\current\bin\java.exe</executable>
+  <arguments>-jar "D:\gem\target\GeminiEligibilityCheck-0.0.1-SNAPSHOT.jar" --spring.profiles.active=postgres</arguments>
+
+  <log mode="roll"></log>
+  <onfailure action="restart" delay="5 sec"/>
+</service>

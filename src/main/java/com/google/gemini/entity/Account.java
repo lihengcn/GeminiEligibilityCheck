@@ -20,6 +20,10 @@ public class Account {
     private String authenticatorUrl;
     // 消息回调地址
     private String messagesUrl;
+    // 是否已出售（已出售账号默认不再分配）
+    private boolean sold;
+    // 是否成品号
+    private boolean finished;
     // 当前状态
     private AccountStatus status;
 }

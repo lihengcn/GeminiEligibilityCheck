@@ -3,7 +3,13 @@ package com.google.gemini.controller;
 import com.google.gemini.dto.CallbackRequest;
 import com.google.gemini.dto.ImportRequest;
 import com.google.gemini.dto.ImportResponse;
+import com.google.gemini.dto.RestoreStatusesRequest;
 import com.google.gemini.dto.StatusView;
+import com.google.gemini.dto.DeleteAccountRequest;
+import com.google.gemini.dto.UpdateFinishedRequest;
+import com.google.gemini.dto.UpdateSoldRequest;
+import com.google.gemini.dto.UpdateStatusRequest;
+import com.google.gemini.dto.StorageInfoResponse;
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
 import com.google.gemini.storage.AccountStorage;
@@ -90,5 +96,95 @@ public class AccountController {
     @GetMapping("/accounts")
     public ResponseEntity<StatusView> accounts() {
         return ResponseEntity.ok(StatusView.from(accountStorage.listAccounts()));
+    }
+
+    @GetMapping("/info")
+    public ResponseEntity<StorageInfoResponse> info() {
+        String storage = accountStorage.isPostgresEnabled() ? "postgres" : "file";
+        return ResponseEntity.ok(new StorageInfoResponse(storage, accountStorage.isPgAllowOverwrite()));
+    }
+
+    @PostMapping("/sold")
+    public ResponseEntity<String> updateSold(@RequestBody UpdateSoldRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().isBlank() || request.getSold() == null) {
+            return ResponseEntity.badRequest().body("email/sold required");
+        }
+        boolean ok = accountStorage.updateSold(request.getEmail().trim(), request.getSold());
+        if (!ok) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
+        }
+        return ResponseEntity.ok("ok");
+    }
+
+    @PostMapping("/finished")
+    public ResponseEntity<String> updateFinished(@RequestBody UpdateFinishedRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().isBlank() || request.getFinished() == null) {
+            return ResponseEntity.badRequest().body("email/finished required");
+        }
+        boolean ok = accountStorage.updateFinished(request.getEmail().trim(), request.getFinished());
+        if (!ok) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
+        }
+        return ResponseEntity.ok("ok");
+    }
+
+    @PostMapping("/delete")
+    public ResponseEntity<String> deleteAccount(@RequestBody DeleteAccountRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().isBlank()) {
+            return ResponseEntity.badRequest().body("email required");
+        }
+        boolean ok = accountStorage.deleteAccount(request.getEmail().trim());
+        if (!ok) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
+        }
+        return ResponseEntity.ok("ok");
+    }
+
+    @PostMapping("/status")
+    public ResponseEntity<String> updateStatusManual(@RequestBody UpdateStatusRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().isBlank()
+                || request.getStatus() == null || request.getStatus().isBlank()) {
+            return ResponseEntity.badRequest().body("email/status required");
+        }
+        AccountStatus status;
+        try {
+            status = AccountStatus.valueOf(request.getStatus().trim().toUpperCase());
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body("invalid status");
+        }
+        Account account = accountStorage.updateStatus(request.getEmail().trim(), status);
+        if (account == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
+        }
+        return ResponseEntity.ok("ok");
+    }
+
+    @PostMapping("/restore-statuses")
+    public ResponseEntity<String> restoreStatuses(@RequestBody RestoreStatusesRequest request) {
+        if (request == null || request.getItems() == null || request.getItems().isEmpty()) {
+            return ResponseEntity.badRequest().body("items required");
+        }
+        int updated = 0;
+        int skipped = 0;
+        for (RestoreStatusesRequest.Item item : request.getItems()) {
+            if (item == null || item.getEmail() == null || item.getEmail().isBlank()
+                    || item.getStatus() == null || item.getStatus().isBlank()) {
+                skipped++;
+                continue;
+            }
+            AccountStatus status;
+            try {
+                status = AccountStatus.valueOf(item.getStatus().trim().toUpperCase());
+            } catch (Exception ex) {
+                skipped++;
+                continue;
+            }
+            if (accountStorage.restoreStatus(item.getEmail().trim(), status)) {
+                updated++;
+            } else {
+                skipped++;
+            }
+        }
+        return ResponseEntity.ok("updated:" + updated + ",skipped:" + skipped);
     }
 }

@@ -1,2 +1,9 @@
 .idea/
 target/
+accounts-state.json
+state-backup.json
+results*.txt
+*.local.txt
+server.*.log
+*.log
+services/*.exe
