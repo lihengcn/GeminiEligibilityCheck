@@ -5,6 +5,8 @@ import com.google.gemini.dto.ImportRequest;
 import com.google.gemini.dto.ImportResponse;
 import com.google.gemini.dto.RestoreStatusesRequest;
 import com.google.gemini.dto.StatusView;
+import com.google.gemini.dto.TotpRequest;
+import com.google.gemini.dto.TotpResponse;
 import com.google.gemini.dto.DeleteAccountRequest;
 import com.google.gemini.dto.UpdateFinishedRequest;
 import com.google.gemini.dto.UpdateSoldRequest;
@@ -12,6 +14,7 @@ import com.google.gemini.dto.UpdateStatusRequest;
 import com.google.gemini.dto.StorageInfoResponse;
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
+import com.google.gemini.service.TotpService;
 import com.google.gemini.storage.AccountStorage;
 import com.google.gemini.storage.AccountStorage.ImportMode;
 import com.google.gemini.storage.AccountStorage.ImportResult;
@@ -28,9 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountController {
     // 账号池与并发控制
     private final AccountStorage accountStorage;
+    private final TotpService totpService;
 
-    public AccountController(AccountStorage accountStorage) {
+    public AccountController(AccountStorage accountStorage, TotpService totpService) {
         this.accountStorage = accountStorage;
+        this.totpService = totpService;
     }
 
     @GetMapping("/poll")
@@ -68,6 +73,19 @@ public class AccountController {
         }
 
         return ResponseEntity.ok("ok");
+    }
+
+    @PostMapping("/2fa")
+    public ResponseEntity<TotpResponse> totp(@RequestBody TotpRequest request) {
+        if (request == null || request.getSecret() == null || request.getSecret().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            TotpService.TotpResult result = totpService.generateToken(request.getSecret().trim());
+            return ResponseEntity.ok(new TotpResponse(result.getCode(), result.getSecondsRemaining()));
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
     }
 
     @PostMapping("/reset-checking")
