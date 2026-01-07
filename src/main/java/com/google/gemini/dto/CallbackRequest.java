@@ -8,4 +8,6 @@ public class CallbackRequest {
     private String email;
     // 回调结果（QUALIFIED/INVALID）
     private String result;
+    // SheerID 认证链接（可选）
+    private String sheeridUrl;
 }

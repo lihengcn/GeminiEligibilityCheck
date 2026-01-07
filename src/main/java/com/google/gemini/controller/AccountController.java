@@ -10,6 +10,7 @@ import com.google.gemini.dto.TotpResponse;
 import com.google.gemini.dto.DeleteAccountRequest;
 import com.google.gemini.dto.UpdateFinishedRequest;
 import com.google.gemini.dto.UpdateSoldRequest;
+import com.google.gemini.dto.UpdateSheeridRequest;
 import com.google.gemini.dto.UpdateStatusRequest;
 import com.google.gemini.dto.StorageInfoResponse;
 import com.google.gemini.entity.Account;
@@ -72,6 +73,30 @@ public class AccountController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
         }
 
+        if (status == AccountStatus.QUALIFIED && request.getSheeridUrl() != null && !request.getSheeridUrl().isBlank()) {
+            String url = request.getSheeridUrl().trim();
+            if (url.length() <= 2048) {
+                accountStorage.upsertSheeridUrl(request.getEmail().trim(), url);
+            }
+        }
+
+        return ResponseEntity.ok("ok");
+    }
+
+    @PostMapping("/sheerid")
+    public ResponseEntity<String> updateSheerid(@RequestBody UpdateSheeridRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().isBlank()) {
+            return ResponseEntity.badRequest().body("email required");
+        }
+        String email = request.getEmail().trim();
+        String url = request.getSheeridUrl() == null ? "" : request.getSheeridUrl().trim();
+        if (url.length() > 2048) {
+            return ResponseEntity.badRequest().body("sheeridUrl too long");
+        }
+        if (!accountStorage.exists(email)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
+        }
+        accountStorage.upsertSheeridUrl(email, url);
         return ResponseEntity.ok("ok");
     }
 

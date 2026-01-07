@@ -159,6 +159,14 @@ public class AccountStorage {
                       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     );
                     """);
+            st.execute("""
+                    CREATE TABLE IF NOT EXISTS gem_sheerid_links (
+                      email TEXT PRIMARY KEY REFERENCES gem_accounts(email) ON DELETE CASCADE,
+                      sheerid_url TEXT NOT NULL DEFAULT '',
+                      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    """);
             st.execute("CREATE INDEX IF NOT EXISTS idx_gem_accounts_status_sold ON gem_accounts(status, sold);");
             log.info("PostgreSQL enabled: {}", pgUrl);
         } catch (Exception ex) {
@@ -224,6 +232,11 @@ public class AccountStorage {
         a.setAppPassword(rs.getString("app_password"));
         a.setAuthenticatorUrl(rs.getString("authenticator_url"));
         a.setMessagesUrl(rs.getString("messages_url"));
+        try {
+            a.setSheeridUrl(rs.getString("sheerid_url"));
+        } catch (Exception ignored) {
+            a.setSheeridUrl(null);
+        }
         a.setSold(rs.getBoolean("sold"));
         a.setFinished(rs.getBoolean("finished"));
         String status = rs.getString("status");
@@ -331,6 +344,7 @@ public class AccountStorage {
                     appPassword,
                     authenticatorUrl,
                     messagesUrl,
+                    null,
                     false,
                     false,
                     AccountStatus.IDLE
@@ -398,6 +412,7 @@ public class AccountStorage {
                         appPassword,
                         authenticatorUrl,
                         messagesUrl,
+                        null,
                         false,
                         false,
                         AccountStatus.IDLE
@@ -664,8 +679,24 @@ public class AccountStorage {
         return new ArrayList<>(accounts.values());
     }
 
+    public synchronized boolean exists(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        String trimmed = email.trim();
+        if (usePostgres) {
+            return existsPostgres(trimmed);
+        }
+        return accounts.containsKey(trimmed);
+    }
+
     private List<Account> listAccountsPostgres() {
-        String sql = "SELECT * FROM gem_accounts ORDER BY email";
+        String sql = """
+                SELECT a.*, l.sheerid_url
+                FROM gem_accounts a
+                LEFT JOIN gem_sheerid_links l ON l.email = a.email
+                ORDER BY a.email
+                """;
         List<Account> list = new ArrayList<>();
         try (Connection conn = openPg();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -677,6 +708,54 @@ public class AccountStorage {
             log.warn("PostgreSQL listAccounts failed: {}", ex.getMessage());
         }
         return list;
+    }
+
+    public synchronized void upsertSheeridUrl(String email, String sheeridUrl) {
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        String trimmedEmail = email.trim();
+        String url = sheeridUrl == null ? "" : sheeridUrl.trim();
+        if (usePostgres) {
+            upsertSheeridUrlPostgres(trimmedEmail, url);
+            return;
+        }
+        Account account = accounts.get(trimmedEmail);
+        if (account == null) {
+            return;
+        }
+        account.setSheeridUrl(url.isEmpty() ? null : url);
+        persistToDisk();
+    }
+
+    private boolean existsPostgres(String email) {
+        String sql = "SELECT 1 FROM gem_accounts WHERE email = ? LIMIT 1";
+        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (Exception ex) {
+            log.warn("PostgreSQL exists failed: {}", ex.getMessage());
+            return false;
+        }
+    }
+
+    private void upsertSheeridUrlPostgres(String email, String url) {
+        String sql = """
+                INSERT INTO gem_sheerid_links(email, sheerid_url)
+                VALUES (?, ?)
+                ON CONFLICT (email) DO UPDATE SET
+                  sheerid_url = EXCLUDED.sheerid_url,
+                  updated_at = NOW()
+                """;
+        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, email);
+            ps.setString(2, url == null ? "" : url);
+            ps.executeUpdate();
+        } catch (Exception ex) {
+            log.warn("PostgreSQL upsertSheeridUrl failed: {}", ex.getMessage());
+        }
     }
 
     public boolean isPostgresEnabled() {

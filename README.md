@@ -50,7 +50,7 @@ docker run -d -p 8080:8080 \
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/poll` | 获取一个待测账号（状态置为 CHECKING） |
-| POST | `/api/callback` | 回传检测结果 `{"email":"...","result":"QUALIFIED\|INVALID"}` |
+| POST | `/api/callback` | 回传检测结果 `{"email":"...","result":"QUALIFIED\|INVALID","sheeridUrl":"https://... (optional)"}` |
 | POST | `/api/reset-checking` | 将所有 CHECKING 重置为 IDLE |
 
 ### 账号管理
@@ -60,6 +60,7 @@ docker run -d -p 8080:8080 \
 | GET | `/api/accounts` | 获取所有账号及状态统计 |
 | POST | `/api/import` | 批量导入账号 `{"content":"email1\nemail2","mode":"APPEND\|OVERWRITE"}` |
 | POST | `/api/status` | 手动更新状态 `{"email":"...","status":"IDLE\|CHECKING\|QUALIFIED\|INVALID"}` |
+| POST | `/api/sheerid` | 更新 SheerID 认证链接 `{"email":"...","sheeridUrl":"https://..."}` |
 | POST | `/api/sold` | 标记已售 `{"email":"...","sold":true}` |
 | POST | `/api/finished` | 标记已完成 `{"email":"...","finished":true}` |
 | POST | `/api/delete` | 删除账号 `{"email":"..."}` |

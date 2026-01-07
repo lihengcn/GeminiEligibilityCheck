@@ -28,6 +28,7 @@ public class StatusView {
                     account.getEmail(),
                     account.getPassword(),
                     account.getAuthenticatorToken(),
+                    account.getSheeridUrl(),
                     account.getStatus().name(),
                     account.isSold(),
                     account.isFinished()
@@ -43,6 +44,7 @@ public class StatusView {
         private String email;
         private String password;
         private String authenticatorToken;
+        private String sheeridUrl;
         private String status;
         private boolean sold;
         private boolean finished;
