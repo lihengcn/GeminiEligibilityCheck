@@ -318,6 +318,7 @@
       .status-chip.CHECKING { background: var(--status-checking-bg); color: var(--status-checking-text); }
       .status-chip.QUALIFIED { background: var(--status-qualified-bg); color: var(--status-qualified-text); }
       .status-chip.INVALID { background: var(--status-invalid-bg); color: var(--status-invalid-text); }
+      .status-chip.PRODUCT { background: rgba(212, 175, 55, 0.18); color: #8a6a00; border: 1px solid rgba(212, 175, 55, 0.38); }
 
       .category-bar { display: flex; background: var(--bg); padding: 4px; border-radius: 10px; gap: 4px; margin: 10px 0 16px; width: fit-content; }
       .cat-btn { background: transparent; border: none; color: var(--ink-soft); padding: 6px 16px; border-radius: 8px; font-size: 12px; box-shadow: none !important; }
@@ -436,11 +437,20 @@
             OneKey Batch
           </h3>
           <div class="field">
+            <label for="onekeyApiKey" style="font-size:11px;">
+              <span data-i18n="onekey_apikey_label">API Key (可选，绕过验证码)</span>
+            </label>
+            <input
+              id="onekeyApiKey"
+              type="password"
+              placeholder="hCaptcha API Key"
+              style="font-size:12px;"
+            />
             <textarea
               id="onekeyIds"
               rows="3"
               placeholder="verificationId"
-              style="resize: none;"
+              style="resize: none; margin-top:8px;"
             ></textarea>
             <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
               <input
@@ -471,12 +481,15 @@
             </button>
           </div>
           
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+            <button id="toggleAutoRefresh" class="secondary" data-active="true">
+              <span data-i18n="auto_refresh_on">自动刷新: 开</span>
+            </button>
             <button id="manualRefresh" class="secondary">
-              <span data-i18n="manual_refresh">立即刷新</span>
+              <span data-i18n="manual_refresh">刷新</span>
             </button>
             <button id="resetChecking" class="secondary">
-              <span data-i18n="reset_checking">重置检测中</span>
+              <span data-i18n="reset_checking">重置</span>
             </button>
           </div>
           <div id="message"></div>
@@ -504,17 +517,19 @@
               <button class="cat-btn" data-cat="QUALIFIED" data-i18n="cat_qualified">资质号</button>
               <button class="cat-btn" data-cat="INVALID" data-i18n="cat_invalid">普通号</button>
               <button class="cat-btn" data-cat="FINISHED" data-i18n="cat_finished">成品号</button>
+              <button class="cat-btn" data-cat="IDLE" data-i18n="cat_idle">IDLE</button>
             </div>
             
             <div class="toolbar-left" style="margin-left:auto;">
                <div id="selectedCount" style="align-self:center; font-size:12px; color:var(--ink-soft); margin-right:8px;"></div>
                <button id="exportSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="export_selected">导出选中</button>
                <button id="resetSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="reset_selected">重置选中</button>
+               <button id="setProductSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="set_product_selected">设为成品号</button>
                <button id="clearSelectionBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="clear_select">清空</button>
             </div>
           </div>
 
-          <div style="flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; position:relative;">
+        <div style="flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; position:relative;">
             <table>
               <thead>
                 <tr>
@@ -526,7 +541,6 @@
                   <th data-i18n="th_2fa">2FA 密钥</th>
                   <th data-i18n="th_status">状态</th>
                   <th data-i18n="th_sold">出售</th>
-                  <th data-i18n="th_finished">成品</th>
                   <th data-i18n="th_actions" style="text-align: right;">操作</th>
                 </tr>
               </thead>
@@ -544,6 +558,8 @@
               <tr>
                 <th data-i18n="th_email">账号</th>
                 <th data-i18n="th_sheerid">认证链接</th>
+                <th data-i18n="th_verify_status">验证状态</th>
+                <th data-i18n="th_actions" style="text-align:right;">操作</th>
               </tr>
             </thead>
             <tbody id="sheeridTableBody"></tbody>
@@ -582,6 +598,7 @@
       const selectAllEl = document.getElementById("selectAll");
       const exportSelectedBtn = document.getElementById("exportSelectedBtn");
       const resetSelectedBtn = document.getElementById("resetSelectedBtn");
+      const setProductSelectedBtn = document.getElementById("setProductSelectedBtn");
       const clearSelectionBtn = document.getElementById("clearSelectionBtn");
       const themeToggleBtn = document.getElementById("themeToggle");
       const langButtons = document.querySelectorAll(".lang-switch button[data-lang]");
@@ -611,9 +628,11 @@
           cat_qualified: "资质号",
           cat_invalid: "普通号",
           cat_finished: "成品号",
+          cat_idle: "空闲",
           onekey_title: "OneKey 批量验证",
           onekey_btn: "批量验证",
           onekey_useLucky: "Lucky",
+          onekey_apikey_label: "API Key (可选，绕过验证码)",
           msg_onekey_too_many: "最多支持 5 个 verificationId",
           msg_onekey_missing: "请填写 verificationId (每行一个)",
           msg_onekey_running: "请求中...",
@@ -629,13 +648,17 @@
           twofa_note: "点击验证码即可复制",
           refresh_label: "自动刷新 (秒)",
           apply_refresh: "设置",
-          manual_refresh: "立即刷新",
-          reset_checking: "重置检测中",
+          manual_refresh: "刷新",
+          auto_refresh_on: "自动: 开",
+          auto_refresh_off: "自动: 关",
+          reset_checking: "重置",
           status_title: "账号状态",
           th_email: "账号",
           th_password: "密码",
           th_2fa: "2FA 密钥",
           th_sheerid: "认证链接",
+          th_verify_status: "验证状态",
+          verify_btn: "验证",
           th_status: "状态",
           th_sold: "出售",
           th_finished: "成品",
@@ -652,9 +675,10 @@
           summary_qualified_normal: "资质号",
           summary_invalid_normal: "普通号",
           summary_finished_total: "成品号",
-          status_finished_qualified: "成品-合格",
+          status_finished_qualified: "成品",
           status_finished_invalid: "成品-无效",
           status_finished_suffix: "(成品)",
+          status_product: "成品号",
           msg_refreshed: "数据已更新",
           msg_refresh_fail: "刷新失败",
           msg_file_missing: "请先选择文件",
@@ -671,6 +695,9 @@
           msg_delete_confirm: "确认永久删除此账号？",
           msg_delete_done: "账号已删除",
           msg_delete_fail: "删除失败",
+          msg_sheerid_delete_confirm: "确认删除该账号的认证链接？",
+          msg_sheerid_delete_done: "认证链接已删除",
+          msg_sheerid_delete_fail: "删除认证链接失败",
           edit_hint: "双击行可编辑内容",
           edit_save: "保存",
           edit_cancel: "取消",
@@ -681,6 +708,7 @@
           msg_export_fail: "复制失败",
           export_selected: "导出选中",
           reset_selected: "重置选中",
+          set_product_selected: "设为成品号",
           clear_select: "清空",
           selected_count: (n) => `${n} 已选`,
           msg_export_none: "未选择账号",
@@ -688,6 +716,10 @@
           msg_reset_selected_confirm: (n) => `确认重置选中的 ${n} 个账号为 IDLE？`,
           msg_reset_selected_done: (n) => `已重置 ${n} 个账号`,
           msg_reset_selected_fail: "批量重置失败",
+          msg_set_product_selected_none: "未选择账号",
+          msg_set_product_selected_confirm: (n) => `确认将选中的 ${n} 个账号设为 成品号？`,
+          msg_set_product_selected_done: (n) => `已设置 ${n} 个账号为 成品号`,
+          msg_set_product_selected_fail: "批量设置失败",
           msg_status_updated: "状态已更新",
           msg_status_update_fail: "更新状态失败",
           msg_cell_copied: "已复制",
@@ -714,9 +746,11 @@
           cat_qualified: "Qualified",
           cat_invalid: "Normal",
           cat_finished: "Finished",
+          cat_idle: "Idle",
           onekey_title: "OneKey Batch",
           onekey_btn: "Batch Verify",
           onekey_useLucky: "Lucky",
+          onekey_apikey_label: "API Key (optional, bypass captcha)",
           msg_onekey_too_many: "Max 5 IDs",
           msg_onekey_missing: "Enter IDs first",
           msg_onekey_running: "Processing...",
@@ -733,12 +767,16 @@
           refresh_label: "Refresh Rate (s)",
           apply_refresh: "Set",
           manual_refresh: "Refresh",
+          auto_refresh_on: "Auto: On",
+          auto_refresh_off: "Auto: Off",
           reset_checking: "Reset",
           status_title: "Status",
           th_email: "Account",
           th_password: "Password",
           th_2fa: "2FA Token",
           th_sheerid: "SheerID Link",
+          th_verify_status: "Verify Status",
+          verify_btn: "Verify",
           th_status: "Status",
           th_sold: "Sold",
           th_finished: "Finished",
@@ -755,9 +793,10 @@
           summary_qualified_normal: "Qualified",
           summary_invalid_normal: "Normal",
           summary_finished_total: "Finished",
-          status_finished_qualified: "FINISHED-QUALIFIED",
+          status_finished_qualified: "PRODUCT",
           status_finished_invalid: "FINISHED-INVALID",
           status_finished_suffix: "(Fin)",
+          status_product: "PRODUCT",
           msg_refreshed: "Updated",
           msg_refresh_fail: "Update Failed",
           msg_file_missing: "Select a file first",
@@ -774,6 +813,9 @@
           msg_delete_confirm: "Delete this account permanently?",
           msg_delete_done: "Deleted",
           msg_delete_fail: "Failed",
+          msg_sheerid_delete_confirm: "Delete this account's SheerID link?",
+          msg_sheerid_delete_done: "SheerID link deleted",
+          msg_sheerid_delete_fail: "Failed to delete SheerID link",
           edit_hint: "Double click to edit",
           edit_save: "Save",
           edit_cancel: "Cancel",
@@ -784,6 +826,7 @@
           msg_export_fail: "Copy Failed",
           export_selected: "Export Sel.",
           reset_selected: "Reset Sel.",
+          set_product_selected: "Set PRODUCT",
           clear_select: "Clear",
           selected_count: (n) => `${n} selected`,
           msg_export_none: "None selected",
@@ -791,6 +834,10 @@
           msg_reset_selected_confirm: (n) => `Reset ${n} selected to IDLE?`,
           msg_reset_selected_done: (n) => `Reset ${n} items`,
           msg_reset_selected_fail: "Failed",
+          msg_set_product_selected_none: "None selected",
+          msg_set_product_selected_confirm: (n) => `Set ${n} selected to PRODUCT?`,
+          msg_set_product_selected_done: (n) => `Set ${n} items to PRODUCT`,
+          msg_set_product_selected_fail: "Failed",
           msg_status_updated: "Status updated",
           msg_status_update_fail: "Update failed",
           msg_cell_copied: "Copied",
@@ -858,6 +905,46 @@
         renderActiveView();
       }
 
+      // SheerID SSE 验证函数
+      async function verifySheeridSSE(verificationIds, onResult) {
+        const apiKey = localStorage.getItem("onekey_api_key") || "";
+        const programId = "";
+        const useLucky = false;
+        
+        // 通过后端代理调用，避免 CORS 问题
+        const resp = await fetch("/api/sheerid-verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ verificationIds, apiKey, useLucky, programId })
+        });
+        
+        if (!resp.ok) throw new Error("Request failed: " + resp.status);
+        
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          console.log("SSE chunk:", chunk); // 调试
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("data:")) {
+              const rawData = line.slice(5).trim();
+              console.log("SSE data:", rawData); // 调试
+              try {
+                const data = JSON.parse(rawData);
+                if (onResult) onResult(data);
+              } catch (e) {
+                // 如果不是 JSON，直接显示原始数据
+                if (onResult && rawData) onResult({ message: rawData });
+              }
+            }
+          }
+        }
+      }
+
       async function copyText(text) {
         try {
           await navigator.clipboard.writeText(text);
@@ -891,22 +978,25 @@
       function getFilteredAccounts() {
         const list = Array.isArray(lastAccounts) ? lastAccounts : [];
         if (currentCategory === "QUALIFIED") {
-          return list.filter((a) => a && a.status === "QUALIFIED" && !a.finished);
+          return list.filter((a) => a && a.status === "QUALIFIED");
         }
         if (currentCategory === "INVALID") {
-          return list.filter((a) => a && a.status === "INVALID" && !a.finished);
+          return list.filter((a) => a && a.status === "INVALID");
         }
         if (currentCategory === "FINISHED") {
-          return list.filter((a) => a && a.finished);
+          return list.filter((a) => a && a.status === "PRODUCT");
+        }
+        if (currentCategory === "IDLE") {
+          return list.filter((a) => a && a.status === "IDLE");
         }
         return list;
       }
 
       function renderSummary(counts, total) {
         const t = i18n[currentLang];
-        const qualifiedNormal = lastAccounts.filter((a) => a && !a.finished && a.status === "QUALIFIED").length;
-        const invalidNormal = lastAccounts.filter((a) => a && !a.finished && a.status === "INVALID").length;
-        const finishedTotal = lastAccounts.filter((a) => a && a.finished).length;
+        const qualifiedNormal = lastAccounts.filter((a) => a && a.status === "QUALIFIED").length;
+        const invalidNormal = lastAccounts.filter((a) => a && a.status === "INVALID").length;
+        const finishedTotal = lastAccounts.filter((a) => a && a.status === "PRODUCT").length;
         const items = [
           { label: t.summary_total, value: total },
           { label: t.summary_idle, value: counts.IDLE || 0 },
@@ -927,13 +1017,16 @@
 
       function statusLabel(account) {
         const t = i18n[currentLang];
-        const s = account.status || "";
-        if (account.finished) {
-          if (s === "QUALIFIED") return t.status_finished_qualified;
-          if (s === "INVALID") return t.status_finished_invalid;
-          return `${s} ${t.status_finished_suffix}`;
+        const s = (account && account.status ? account.status : "").toString();
+        if (s === "PRODUCT") {
+          return t.status_product;
         }
         return s;
+      }
+
+      function statusChipClass(account) {
+        const s = (account && account.status ? account.status : "").toString();
+        return `status-chip ${s}`;
       }
 
       function getQualifiedSheeridAccounts() {
@@ -944,17 +1037,26 @@
       function renderSheeridTable(accounts) {
         const t = i18n[currentLang];
         if (!accounts || accounts.length === 0) {
-          sheeridTableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:20px;">${t.empty_sheerid}</td></tr>`;
+          sheeridTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px;">${t.empty_sheerid}</td></tr>`;
           return;
         }
         sheeridTableBody.innerHTML = accounts
           .map((a) => {
             const url = String(a.sheeridUrl || "").trim();
-            const safeUrl = url.replaceAll('"', "&quot;");
-            return `<tr data-email="${a.email}">
+            // 从 URL 提取 verificationId
+            const idMatch = url.match(/([a-f0-9]{24})/i);
+            const verifyId = idMatch ? idMatch[1] : "";
+            return `<tr data-email="${a.email}" data-verify-id="${verifyId}">
               <td class="copyable" data-copy-type="email" title="Click to copy">${a.email}</td>
-              <td class="copyable" data-copy-type="sheerid" title="Click to copy">
-                <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-2); text-decoration:none;">${url}</a>
+              <td class="copyable sheerid-cell" data-copy-type="sheerid" data-email="${a.email}" title="Click to copy">${url}</td>
+              <td class="verify-status" data-email="${a.email}" style="font-size:12px; color:var(--ink-soft);">-</td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button class="secondary sheerid-verify-btn" data-email="${a.email}" data-verify-id="${verifyId}" style="padding:4px 8px;" ${!verifyId ? 'disabled' : ''}>
+                  ${t.verify_btn || '验证'}
+                </button>
+                <button class="secondary sheerid-delete-btn" data-email="${a.email}" style="padding:4px 8px; color: var(--status-invalid-text); border-color: rgba(200,0,0,0.2);">
+                  ${t.delete_btn}
+                </button>
               </td>
             </tr>`;
           })
@@ -963,7 +1065,8 @@
         sheeridTableBody.querySelectorAll(".copyable").forEach((el) => {
           el.addEventListener("click", async (event) => {
             event.stopPropagation();
-            if(event.target.tagName === 'A') return;
+            if (el.querySelector("input")) return;
+            if (event.target.closest("button")) return;
             const type = el.getAttribute("data-copy-type");
             const row = el.closest("tr");
             let text = (el.textContent || "").trim();
@@ -972,6 +1075,134 @@
             const ok = await copyText(text);
             if (ok) setMessage(i18n[currentLang].msg_cell_copied);
             else setMessage(i18n[currentLang].msg_cell_copy_fail, "error");
+          });
+        });
+
+        // Double-click to edit SheerID link (no link opening; single click copies).
+        sheeridTableBody.querySelectorAll(".sheerid-cell").forEach((cell) => {
+          cell.addEventListener("dblclick", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (cell.querySelector("input")) return;
+            const email = cell.getAttribute("data-email");
+            if (!email) return;
+            const original = (cell.textContent || "").trim();
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.value = original;
+            input.style.width = "100%";
+            input.style.padding = "6px 8px";
+            input.style.borderRadius = "8px";
+            input.style.border = "1px solid var(--line)";
+            input.style.background = "var(--card)";
+            input.style.color = "var(--ink)";
+
+            cell.textContent = "";
+            cell.appendChild(input);
+            input.focus();
+            input.select();
+
+            const restore = () => {
+              cell.textContent = original;
+            };
+
+            input.addEventListener("keydown", (e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                restore();
+              }
+              if (e.key === "Enter") {
+                e.preventDefault();
+                input.blur();
+              }
+            });
+
+            input.addEventListener("blur", async () => {
+              const next = (input.value || "").trim();
+              if (next === original) {
+                restore();
+                return;
+              }
+              try {
+                const resp = await fetch("/api/sheerid", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ email, sheeridUrl: next }),
+                });
+                if (!resp.ok) throw new Error("update sheerid failed");
+                await fetchAccounts();
+              } catch (e) {
+                restore();
+                setMessage(i18n[currentLang].msg_edit_save_fail, "error");
+              }
+            });
+          });
+        });
+
+        sheeridTableBody.querySelectorAll(".sheerid-delete-btn").forEach((btn) => {
+          btn.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const email = btn.getAttribute("data-email");
+            if (!email) return;
+            if (!window.confirm(i18n[currentLang].msg_sheerid_delete_confirm)) return;
+            try {
+              const resp = await fetch("/api/sheerid", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, sheeridUrl: "" }),
+              });
+              if (!resp.ok) throw new Error("delete sheerid failed");
+              setMessage(i18n[currentLang].msg_sheerid_delete_done);
+              await fetchAccounts();
+            } catch (e) {
+              setMessage(i18n[currentLang].msg_sheerid_delete_fail, "error");
+            }
+          });
+        });
+
+        // 验证按钮事件
+        sheeridTableBody.querySelectorAll(".sheerid-verify-btn").forEach((btn) => {
+          btn.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const email = btn.getAttribute("data-email");
+            const verifyId = btn.getAttribute("data-verify-id");
+            if (!verifyId) return;
+            
+            const statusCell = sheeridTableBody.querySelector(`.verify-status[data-email="${email}"]`);
+            if (statusCell) statusCell.textContent = "验证中...";
+            btn.disabled = true;
+            
+            try {
+              await verifySheeridSSE([verifyId], (result) => {
+                if (statusCell) {
+                  // 开始事件，显示等待中
+                  if (result.total !== undefined && !result.verificationId) {
+                    statusCell.textContent = "等待结果中...";
+                    statusCell.style.color = "var(--ink-soft)";
+                    return;
+                  }
+                  // 进度事件，继续等待
+                  if (result.completed !== undefined && !result.verificationId) {
+                    return;
+                  }
+                  // 结果事件，显示最终结果
+                  if (result.verificationId === verifyId || result.message || result.currentStep) {
+                    const msg = result.message || result.currentStep || result.status || JSON.stringify(result);
+                    statusCell.textContent = msg;
+                    statusCell.style.color = (result.currentStep === "success" || result.status === "success") 
+                      ? "var(--status-qualified-text)" 
+                      : "var(--status-invalid-text)";
+                  }
+                }
+              });
+            } catch (e) {
+              if (statusCell) statusCell.textContent = "失败: " + e.message;
+            } finally {
+              btn.disabled = false;
+            }
           });
         });
       }
@@ -988,7 +1219,7 @@
       function renderTable(accounts) {
         const t = i18n[currentLang];
         if (!accounts || accounts.length === 0) {
-          tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:30px; color:var(--ink-soft);">${t.empty_table}</td></tr>`;
+          tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--ink-soft);">${t.empty_table}</td></tr>`;
           updateSelectionUI();
           return;
         }
@@ -1015,7 +1246,7 @@
                 <td><input class="edit-2fa" type="text" value="${(account.authenticatorToken || "").replaceAll('"', "&quot;")}" /></td>
                 <td>
                   <select class="edit-status">
-                    ${["IDLE", "CHECKING", "QUALIFIED", "INVALID"]
+                    ${["IDLE", "CHECKING", "QUALIFIED", "INVALID", "PRODUCT"]
                       .map((s) => `<option value="${s}" ${s === account.status ? "selected" : ""}>${s}</option>`)
                       .join("")}
                   </select>
@@ -1024,13 +1255,6 @@
                   <label>
                     <input type="checkbox" class="sold-toggle" data-email="${account.email}" ${
                       account.sold ? "checked" : ""
-                    } />
-                  </label>
-                </td>
-                <td>
-                  <label>
-                    <input type="checkbox" class="finished-toggle" data-email="${account.email}" ${
-                      account.finished ? "checked" : ""
                     } />
                   </label>
                 </td>
@@ -1049,12 +1273,9 @@
                 <td class="copyable" data-copy-type="email" title="Copy">${account.email}</td>
                 <td class="copyable" data-copy-type="password" title="Copy">${account.password || ""}</td>
                 <td class="copyable" data-copy-type="token" title="Copy" style="font-family:'JetBrains Mono'; font-size:12px;">${account.authenticatorToken || ""}</td>
-                <td class="status-cell" data-email="${account.email}"><span class="status-chip ${account.status}">${statusLabel(account)}</span></td>
+                <td class="status-cell" data-email="${account.email}"><span class="${statusChipClass(account)}">${statusLabel(account)}</span></td>
                 <td>
                    <input type="checkbox" class="sold-toggle" data-email="${account.email}" ${account.sold ? "checked" : ""} />
-                </td>
-                <td>
-                   <input type="checkbox" class="finished-toggle" data-email="${account.email}" ${account.finished ? "checked" : ""} />
                 </td>
                 <td style="text-align:right; white-space:nowrap;">
                   <button class="secondary export-btn" data-email="${account.email}" style="padding:4px 8px;">${t.export_btn}</button>
@@ -1113,7 +1334,7 @@
             if (!email || cell.querySelector("select")) return;
             const current = (lastAccounts.find((a) => a && a.email === email)?.status || "IDLE").toString();
             const select = document.createElement("select");
-            ["IDLE", "CHECKING", "QUALIFIED", "INVALID"].forEach((s) => {
+            ["IDLE", "CHECKING", "QUALIFIED", "INVALID", "PRODUCT"].forEach((s) => {
               const opt = document.createElement("option");
               opt.value = s;
               opt.textContent = s;
@@ -1163,25 +1384,6 @@
             } catch (e) {
               input.checked = !sold;
               setMessage(i18n[currentLang].msg_sold_update_fail, "error");
-            }
-          });
-        });
-
-        tableBody.querySelectorAll(".finished-toggle").forEach((el) => {
-          el.addEventListener("change", async (event) => {
-            const input = event.target;
-            const email = input.getAttribute("data-email");
-            const finished = input.checked;
-            try {
-              const resp = await fetch("/api/finished", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, finished }),
-              });
-              if (!resp.ok) throw new Error("update failed");
-              await fetchAccounts();
-            } catch (e) {
-              input.checked = !finished;
             }
           });
         });
@@ -1433,8 +1635,59 @@
         } catch (e) { setMessage(t.msg_reset_selected_fail, "error"); }
       });
 
+      if (setProductSelectedBtn) {
+        setProductSelectedBtn.addEventListener("click", async () => {
+          const t = i18n[currentLang];
+          const emails = Array.from(selectedEmails);
+          if (emails.length === 0) { setMessage(t.msg_set_product_selected_none, "error"); return; }
+          if (!window.confirm(t.msg_set_product_selected_confirm(emails.length))) return;
+          try {
+            const resp = await fetch("/api/restore-statuses", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ items: emails.map((email) => ({ email, status: "PRODUCT" })) }),
+            });
+            if (!resp.ok) throw new Error("bulk set product failed");
+            setMessage(t.msg_set_product_selected_done(emails.length));
+            await fetchAccounts();
+          } catch (e) {
+            setMessage(t.msg_set_product_selected_fail, "error");
+          }
+        });
+      }
+
       applyRefreshBtn.addEventListener("click", scheduleRefresh);
       manualRefreshBtn.addEventListener("click", fetchAccounts);
+      
+      // 自动刷新开关
+      const toggleAutoRefreshBtn = document.getElementById("toggleAutoRefresh");
+      let autoRefreshEnabled = true;
+      
+      function updateAutoRefreshBtn() {
+        const t = i18n[currentLang];
+        const span = toggleAutoRefreshBtn.querySelector("span");
+        if (autoRefreshEnabled) {
+          span.textContent = t.auto_refresh_on;
+          toggleAutoRefreshBtn.style.background = "var(--accent)";
+          toggleAutoRefreshBtn.style.color = "#fff";
+        } else {
+          span.textContent = t.auto_refresh_off;
+          toggleAutoRefreshBtn.style.background = "";
+          toggleAutoRefreshBtn.style.color = "";
+        }
+      }
+      
+      toggleAutoRefreshBtn.addEventListener("click", () => {
+        autoRefreshEnabled = !autoRefreshEnabled;
+        if (autoRefreshEnabled) {
+          scheduleRefresh();
+        } else {
+          if (refreshTimer) clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+        updateAutoRefreshBtn();
+      });
+      
       resetCheckingBtn.addEventListener("click", async () => {
         if (!window.confirm(i18n[currentLang].msg_reset_confirm)) return;
         try {
@@ -1491,6 +1744,105 @@
       if (savedTheme) { setTheme(savedTheme, false); }
       else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) { setTheme("dark", false); }
       else { setTheme("light", false); }
+
+      // OneKey Batch 功能
+      const onekeyBatchBtn = document.getElementById("onekeyBatchBtn");
+      const onekeyIdsEl = document.getElementById("onekeyIds");
+      const onekeyProgramIdEl = document.getElementById("onekeyProgramId");
+      const onekeyUseLuckyEl = document.getElementById("onekeyUseLucky");
+      const onekeyResultEl = document.getElementById("onekeyResult");
+      const onekeyApiKeyEl = document.getElementById("onekeyApiKey");
+      
+      // 加载保存的 API Key
+      if (onekeyApiKeyEl) {
+        onekeyApiKeyEl.value = localStorage.getItem("onekey_api_key") || "";
+        onekeyApiKeyEl.addEventListener("change", () => {
+          localStorage.setItem("onekey_api_key", onekeyApiKeyEl.value.trim());
+        });
+      }
+      
+      if (onekeyBatchBtn) {
+        onekeyBatchBtn.addEventListener("click", async () => {
+          const t = i18n[currentLang];
+          const raw = (onekeyIdsEl.value || "").trim();
+          if (!raw) { onekeyResultEl.textContent = t.msg_onekey_missing; return; }
+          
+          // 从输入中提取 verificationId（支持直接 ID 或 URL）
+          const lines = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+          const ids = lines.map(line => {
+            const match = line.match(/([a-f0-9]{24})/i);
+            return match ? match[1] : null;
+          }).filter(Boolean);
+          
+          if (ids.length === 0) { onekeyResultEl.textContent = t.msg_onekey_missing; return; }
+          if (ids.length > 5) { onekeyResultEl.textContent = t.msg_onekey_too_many; return; }
+          
+          const programId = (onekeyProgramIdEl.value || "").trim();
+          const useLucky = onekeyUseLuckyEl.checked;
+          const apiKey = (onekeyApiKeyEl ? onekeyApiKeyEl.value.trim() : "") || localStorage.getItem("onekey_api_key") || "";
+          
+          onekeyResultEl.textContent = t.msg_onekey_running;
+          onekeyBatchBtn.disabled = true;
+          
+          try {
+            // 先获取 CSRF token
+            const pageResp = await fetch("https://batch.1key.me/", { mode: "cors", credentials: "omit" });
+            const pageHtml = await pageResp.text();
+            const csrfMatch = pageHtml.match(/window\.CSRF_TOKEN\s*=\s*"([^"]+)"/);
+            const csrfToken = csrfMatch ? csrfMatch[1] : "";
+            
+            if (!csrfToken) {
+              onekeyResultEl.textContent = "Failed to get CSRF token";
+              onekeyBatchBtn.disabled = false;
+              return;
+            }
+            
+            // SSE 请求
+            const resp = await fetch("https://batch.1key.me/api/batch", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrfToken,
+              },
+              body: JSON.stringify({
+                verificationIds: ids,
+                hCaptchaToken: apiKey,
+                useLucky: useLucky,
+                programId: programId
+              })
+            });
+            
+            if (!resp.ok) throw new Error("Request failed");
+            
+            // 解析 SSE 响应
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let result = "";
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split("\n");
+              for (const line of lines) {
+                if (line.startsWith("data:")) {
+                  const data = line.slice(5).trim();
+                  if (data) {
+                    result += data + "\n";
+                    onekeyResultEl.textContent = result;
+                  }
+                }
+              }
+            }
+            
+            if (!result) onekeyResultEl.textContent = "No response";
+          } catch (e) {
+            onekeyResultEl.textContent = t.msg_onekey_fail + ": " + e.message;
+          } finally {
+            onekeyBatchBtn.disabled = false;
+          }
+        });
+      }
 
       applyLanguage(currentLang);
       scheduleRefresh();

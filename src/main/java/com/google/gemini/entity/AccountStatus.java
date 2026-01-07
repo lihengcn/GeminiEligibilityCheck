@@ -7,6 +7,8 @@ public enum AccountStatus {
     CHECKING,
     // 通过
     QUALIFIED,
+    // 成品号
+    PRODUCT,
     // 无效
     INVALID
 }

@@ -79,6 +79,7 @@ public class AccountStorage {
         this.usePostgres = !this.pgUrl.isBlank();
         if (usePostgres) {
             initPostgres();
+            migrateLegacyFinishedToProductPostgres();
             if (pgMigrateFromFile) {
                 migrateFromLocalFileIfDbEmpty();
             }
@@ -101,15 +102,40 @@ public class AccountStorage {
             if (list == null) {
                 return;
             }
+            boolean migrated = false;
             for (Account account : list) {
                 if (account == null || account.getEmail() == null || account.getEmail().isBlank()) {
                     continue;
                 }
+                // Legacy migration: finished=true + QUALIFIED => PRODUCT, and clear finished flag.
+                if (account.isFinished()) {
+                    if (account.getStatus() == AccountStatus.QUALIFIED) {
+                        account.setStatus(AccountStatus.PRODUCT);
+                    }
+                    account.setFinished(false);
+                    migrated = true;
+                }
                 accounts.put(account.getEmail(), account);
+            }
+            if (migrated) {
+                persistToDisk();
             }
             log.info("Loaded {} accounts from {}", accounts.size(), persistencePath.toAbsolutePath());
         } catch (Exception ex) {
             log.warn("Failed to load accounts from {}: {}", persistencePath.toAbsolutePath(), ex.getMessage());
+        }
+    }
+
+    private void migrateLegacyFinishedToProductPostgres() {
+        // Legacy migration: finished=true + QUALIFIED => PRODUCT, then clear finished flag for all rows.
+        // This removes the separate "finished" state while keeping other statuses unchanged.
+        String promoteSql = "UPDATE gem_accounts SET status='PRODUCT', updated_at = NOW() WHERE finished=TRUE AND status='QUALIFIED'";
+        String clearSql = "UPDATE gem_accounts SET finished=FALSE, updated_at = NOW() WHERE finished=TRUE";
+        try (Connection conn = openPg(); Statement st = conn.createStatement()) {
+            st.executeUpdate(promoteSql);
+            st.executeUpdate(clearSql);
+        } catch (Exception ex) {
+            log.warn("PostgreSQL migrateLegacyFinishedToProduct failed: {}", ex.getMessage());
         }
     }
 
@@ -613,32 +639,48 @@ public class AccountStorage {
     }
 
     public synchronized boolean updateFinished(String email, boolean finished) {
-        if (usePostgres) {
-            return updateFinishedPostgres(email, finished);
-        }
+        // Backward-compat: "finished" is deprecated; map it to status PRODUCT.
         if (email == null || email.isBlank()) {
             return false;
         }
-        Account account = accounts.get(email);
+        String trimmed = email.trim();
+        if (usePostgres) {
+            return updateFinishedPostgresCompat(trimmed, finished);
+        }
+        Account account = accounts.get(trimmed);
         if (account == null) {
             return false;
         }
-        account.setFinished(finished);
-        persistToDisk();
+        boolean changed = false;
+        if (finished) {
+            if (account.getStatus() != AccountStatus.PRODUCT) {
+                account.setStatus(AccountStatus.PRODUCT);
+                changed = true;
+            }
+        } else {
+            if (account.getStatus() == AccountStatus.PRODUCT) {
+                account.setStatus(AccountStatus.QUALIFIED);
+                changed = true;
+            }
+        }
+        if (changed) {
+            persistToDisk();
+        }
         return true;
     }
 
-    private boolean updateFinishedPostgres(String email, boolean finished) {
+    private boolean updateFinishedPostgresCompat(String email, boolean finished) {
         if (email == null || email.isBlank()) {
             return false;
         }
-        String sql = "UPDATE gem_accounts SET finished=?, updated_at = NOW() WHERE email=?";
+        String sql = finished
+                ? "UPDATE gem_accounts SET status='PRODUCT', updated_at = NOW() WHERE email=?"
+                : "UPDATE gem_accounts SET status=CASE WHEN status='PRODUCT' THEN 'QUALIFIED' ELSE status END, updated_at = NOW() WHERE email=?";
         try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setBoolean(1, finished);
-            ps.setString(2, email);
+            ps.setString(1, email);
             return ps.executeUpdate() > 0;
         } catch (Exception ex) {
-            log.warn("PostgreSQL updateFinished failed: {}", ex.getMessage());
+            log.warn("PostgreSQL updateFinished compat failed: {}", ex.getMessage());
             return false;
         }
     }
@@ -717,7 +759,11 @@ public class AccountStorage {
         String trimmedEmail = email.trim();
         String url = sheeridUrl == null ? "" : sheeridUrl.trim();
         if (usePostgres) {
-            upsertSheeridUrlPostgres(trimmedEmail, url);
+            if (url.isEmpty()) {
+                deleteSheeridUrlPostgres(trimmedEmail);
+            } else {
+                upsertSheeridUrlPostgres(trimmedEmail, url);
+            }
             return;
         }
         Account account = accounts.get(trimmedEmail);
@@ -755,6 +801,16 @@ public class AccountStorage {
             ps.executeUpdate();
         } catch (Exception ex) {
             log.warn("PostgreSQL upsertSheeridUrl failed: {}", ex.getMessage());
+        }
+    }
+
+    private void deleteSheeridUrlPostgres(String email) {
+        String sql = "DELETE FROM gem_sheerid_links WHERE email = ?";
+        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, email);
+            ps.executeUpdate();
+        } catch (Exception ex) {
+            log.warn("PostgreSQL deleteSheeridUrl failed: {}", ex.getMessage());
         }
     }
 
