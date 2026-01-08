@@ -12,6 +12,8 @@ public class Account {
     private String email;
     // 账号密码
     private String password;
+    // 恢复邮箱
+    private String recoveryEmail;
     // 2FA 密钥
     private String authenticatorToken;
     // 应用密码

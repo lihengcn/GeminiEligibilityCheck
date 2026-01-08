@@ -6,4 +6,5 @@ import lombok.Data;
 public class ImportRequest {
     private String mode;
     private String content;
+    private String template;
 }

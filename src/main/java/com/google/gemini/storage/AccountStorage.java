@@ -174,6 +174,7 @@ public class AccountStorage {
                     CREATE TABLE IF NOT EXISTS gem_accounts (
                       email TEXT PRIMARY KEY,
                       password TEXT NOT NULL DEFAULT '',
+                      recovery_email TEXT NOT NULL DEFAULT '',
                       authenticator_token TEXT NOT NULL DEFAULT '',
                       app_password TEXT NOT NULL DEFAULT '',
                       authenticator_url TEXT NOT NULL DEFAULT '',
@@ -185,6 +186,16 @@ public class AccountStorage {
                       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     );
                     """);
+            st.execute("ALTER TABLE gem_accounts ADD COLUMN IF NOT EXISTS recovery_email TEXT NOT NULL DEFAULT '';");
+            try {
+                st.executeUpdate("""
+                        UPDATE gem_accounts
+                        SET recovery_email = auxiliary_email
+                        WHERE recovery_email = '' AND auxiliary_email <> ''
+                        """);
+            } catch (Exception ex) {
+                log.info("Skip auxiliary_email migration: {}", ex.getMessage());
+            }
             st.execute("""
                     CREATE TABLE IF NOT EXISTS gem_sheerid_links (
                       email TEXT PRIMARY KEY REFERENCES gem_accounts(email) ON DELETE CASCADE,
@@ -254,6 +265,11 @@ public class AccountStorage {
         Account a = new Account();
         a.setEmail(rs.getString("email"));
         a.setPassword(rs.getString("password"));
+        try {
+            a.setRecoveryEmail(rs.getString("recovery_email"));
+        } catch (Exception ignored) {
+            a.setRecoveryEmail("");
+        }
         a.setAuthenticatorToken(rs.getString("authenticator_token"));
         a.setAppPassword(rs.getString("app_password"));
         a.setAuthenticatorUrl(rs.getString("authenticator_url"));
@@ -277,10 +293,11 @@ public class AccountStorage {
     private void upsertAccountPreserveStatus(Connection conn, Account account, boolean keepFlags) throws Exception {
         String sql = keepFlags
                 ? """
-                INSERT INTO gem_accounts(email,password,authenticator_token,app_password,authenticator_url,messages_url)
-                VALUES (?,?,?,?,?,?)
+                INSERT INTO gem_accounts(email,password,recovery_email,authenticator_token,app_password,authenticator_url,messages_url)
+                VALUES (?,?,?,?,?,?,?)
                 ON CONFLICT (email) DO UPDATE SET
                   password=EXCLUDED.password,
+                  recovery_email=EXCLUDED.recovery_email,
                   authenticator_token=EXCLUDED.authenticator_token,
                   app_password=EXCLUDED.app_password,
                   authenticator_url=EXCLUDED.authenticator_url,
@@ -288,10 +305,11 @@ public class AccountStorage {
                   updated_at=NOW()
                 """
                 : """
-                INSERT INTO gem_accounts(email,password,authenticator_token,app_password,authenticator_url,messages_url,sold,finished,status)
-                VALUES (?,?,?,?,?,?,?,?,?)
+                INSERT INTO gem_accounts(email,password,recovery_email,authenticator_token,app_password,authenticator_url,messages_url,sold,finished,status)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT (email) DO UPDATE SET
                   password=EXCLUDED.password,
+                  recovery_email=EXCLUDED.recovery_email,
                   authenticator_token=EXCLUDED.authenticator_token,
                   app_password=EXCLUDED.app_password,
                   authenticator_url=EXCLUDED.authenticator_url,
@@ -304,22 +322,132 @@ public class AccountStorage {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, account.getEmail());
             ps.setString(2, account.getPassword() == null ? "" : account.getPassword());
-            ps.setString(3, account.getAuthenticatorToken() == null ? "" : account.getAuthenticatorToken());
-            ps.setString(4, account.getAppPassword() == null ? "" : account.getAppPassword());
-            ps.setString(5, account.getAuthenticatorUrl() == null ? "" : account.getAuthenticatorUrl());
-            ps.setString(6, account.getMessagesUrl() == null ? "" : account.getMessagesUrl());
+            ps.setString(3, account.getRecoveryEmail() == null ? "" : account.getRecoveryEmail());
+            ps.setString(4, account.getAuthenticatorToken() == null ? "" : account.getAuthenticatorToken());
+            ps.setString(5, account.getAppPassword() == null ? "" : account.getAppPassword());
+            ps.setString(6, account.getAuthenticatorUrl() == null ? "" : account.getAuthenticatorUrl());
+            ps.setString(7, account.getMessagesUrl() == null ? "" : account.getMessagesUrl());
             if (!keepFlags) {
-                ps.setBoolean(7, account.isSold());
-                ps.setBoolean(8, account.isFinished());
-                ps.setString(9, account.getStatus() == null ? AccountStatus.IDLE.name() : account.getStatus().name());
+                ps.setBoolean(8, account.isSold());
+                ps.setBoolean(9, account.isFinished());
+                ps.setString(10, account.getStatus() == null ? AccountStatus.IDLE.name() : account.getStatus().name());
             }
             ps.executeUpdate();
         }
     }
 
+    private void upsertAccountRecoveryEmail(Connection conn, Account account, boolean keepFlags) throws Exception {
+        String sql = keepFlags
+                ? """
+                INSERT INTO gem_accounts(email,password,recovery_email)
+                VALUES (?,?,?)
+                ON CONFLICT (email) DO UPDATE SET
+                  password=EXCLUDED.password,
+                  recovery_email=EXCLUDED.recovery_email,
+                  updated_at=NOW()
+                """
+                : """
+                INSERT INTO gem_accounts(email,password,recovery_email,sold,finished,status)
+                VALUES (?,?,?,?,?,?)
+                ON CONFLICT (email) DO UPDATE SET
+                  password=EXCLUDED.password,
+                  recovery_email=EXCLUDED.recovery_email,
+                  sold=EXCLUDED.sold,
+                  finished=EXCLUDED.finished,
+                  status=EXCLUDED.status,
+                  updated_at=NOW()
+                """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, account.getEmail());
+            ps.setString(2, account.getPassword() == null ? "" : account.getPassword());
+            ps.setString(3, account.getRecoveryEmail() == null ? "" : account.getRecoveryEmail());
+            if (!keepFlags) {
+                ps.setBoolean(4, account.isSold());
+                ps.setBoolean(5, account.isFinished());
+                ps.setString(6, account.getStatus() == null ? AccountStatus.IDLE.name() : account.getStatus().name());
+            }
+            ps.executeUpdate();
+        }
+    }
+
+    private static boolean looksLikeRecoveryEmail(String value) {
+        if (value == null) {
+            return false;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        int at = trimmed.indexOf('@');
+        int dot = trimmed.lastIndexOf('.');
+        return at > 0 && dot > at + 1 && dot < trimmed.length() - 1;
+    }
+
+    private static ImportTemplate resolveTemplate(ImportTemplate template, String[] parts) {
+        if (template == null || template == ImportTemplate.AUTO) {
+            if (parts.length == 3 && looksLikeRecoveryEmail(parts[2])) {
+                return ImportTemplate.RECOVERY_EMAIL;
+            }
+            return ImportTemplate.TOKEN;
+        }
+        return template;
+    }
+
+    private static class ParsedImportLine {
+        private String email;
+        private String password;
+        private String recoveryEmail;
+        private String authenticatorToken;
+        private String appPassword;
+        private String authenticatorUrl;
+        private String messagesUrl;
+        private boolean hasPassword;
+        private boolean hasRecoveryEmail;
+        private boolean hasAuthenticatorToken;
+        private boolean hasAppPassword;
+        private boolean hasAuthenticatorUrl;
+        private boolean hasMessagesUrl;
+        private ImportTemplate templateUsed;
+    }
+
+    private ParsedImportLine parseImportLine(String line, ImportTemplate template) {
+        String[] parts = line.split(";", -1);
+        if (parts.length < 3) {
+            return null;
+        }
+        String email = parts[0].trim();
+        if (looksLikeHeaderEmail(email)) {
+            return null;
+        }
+        ImportTemplate effectiveTemplate = resolveTemplate(template, parts);
+        ParsedImportLine parsed = new ParsedImportLine();
+        parsed.email = email;
+        parsed.password = parts.length > 1 ? parts[1] : "";
+        parsed.hasPassword = parts.length > 1;
+        parsed.templateUsed = effectiveTemplate;
+        if (effectiveTemplate == ImportTemplate.RECOVERY_EMAIL) {
+            parsed.recoveryEmail = parts.length > 2 ? parts[2] : "";
+            parsed.hasRecoveryEmail = parts.length > 2;
+            return parsed;
+        }
+        parsed.authenticatorToken = parts.length > 2 ? parts[2] : "";
+        parsed.hasAuthenticatorToken = parts.length > 2;
+        parsed.appPassword = parts.length > 3 ? parts[3] : "";
+        parsed.hasAppPassword = parts.length > 3;
+        parsed.authenticatorUrl = parts.length > 4 ? parts[4] : "";
+        parsed.hasAuthenticatorUrl = parts.length > 4;
+        parsed.messagesUrl = parts.length > 5 ? parts[5] : "";
+        parsed.hasMessagesUrl = parts.length > 5;
+        return parsed;
+    }
+
     public synchronized ImportResult importFromText(String content, ImportMode mode) {
+        return importFromText(content, mode, ImportTemplate.AUTO);
+    }
+
+    public synchronized ImportResult importFromText(String content, ImportMode mode, ImportTemplate template) {
         if (usePostgres) {
-            return importFromTextPostgres(content, mode);
+            return importFromTextPostgres(content, mode, template);
         }
         if (mode == ImportMode.OVERWRITE) {
             accounts.clear();
@@ -337,39 +465,44 @@ public class AccountStorage {
             if (line.isEmpty()) {
                 continue;
             }
-            String[] parts = line.split(";", -1);
-            if (parts.length < 3) {
+            ParsedImportLine parsed = parseImportLine(line, template);
+            if (parsed == null) {
                 skipped++;
                 continue;
             }
-            String email = parts[0];
-            if (looksLikeHeaderEmail(email)) {
-                skipped++;
-                continue;
-            }
-            String password = parts.length > 1 ? parts[1] : "";
-            String authenticatorToken = parts.length > 2 ? parts[2] : "";
-            String appPassword = parts.length > 3 ? parts[3] : "";
-            String authenticatorUrl = parts.length > 4 ? parts[4] : "";
-            String messagesUrl = parts.length > 5 ? parts[5] : "";
+            String email = parsed.email;
             Account existing = accounts.get(email);
             if (existing != null) {
                 // 追加模式下保留原状态，仅更新账号资料。
-                existing.setPassword(password);
-                existing.setAuthenticatorToken(authenticatorToken);
-                existing.setAppPassword(appPassword);
-                existing.setAuthenticatorUrl(authenticatorUrl);
-                existing.setMessagesUrl(messagesUrl);
+                if (parsed.hasPassword) {
+                    existing.setPassword(parsed.password);
+                }
+                if (parsed.hasRecoveryEmail) {
+                    existing.setRecoveryEmail(parsed.recoveryEmail);
+                }
+                if (parsed.hasAuthenticatorToken) {
+                    existing.setAuthenticatorToken(parsed.authenticatorToken);
+                }
+                if (parsed.hasAppPassword) {
+                    existing.setAppPassword(parsed.appPassword);
+                }
+                if (parsed.hasAuthenticatorUrl) {
+                    existing.setAuthenticatorUrl(parsed.authenticatorUrl);
+                }
+                if (parsed.hasMessagesUrl) {
+                    existing.setMessagesUrl(parsed.messagesUrl);
+                }
                 updated++;
                 continue;
             }
             Account account = new Account(
                     email,
-                    password,
-                    authenticatorToken,
-                    appPassword,
-                    authenticatorUrl,
-                    messagesUrl,
+                    parsed.hasPassword ? parsed.password : "",
+                    parsed.hasRecoveryEmail ? parsed.recoveryEmail : "",
+                    parsed.hasAuthenticatorToken ? parsed.authenticatorToken : "",
+                    parsed.hasAppPassword ? parsed.appPassword : "",
+                    parsed.hasAuthenticatorUrl ? parsed.authenticatorUrl : "",
+                    parsed.hasMessagesUrl ? parsed.messagesUrl : "",
                     null,
                     false,
                     false,
@@ -382,7 +515,7 @@ public class AccountStorage {
         return new ImportResult(added, updated, skipped);
     }
 
-    private ImportResult importFromTextPostgres(String content, ImportMode mode) {
+    private ImportResult importFromTextPostgres(String content, ImportMode mode, ImportTemplate template) {
         if (mode == ImportMode.OVERWRITE && !pgAllowOverwrite) {
             mode = ImportMode.APPEND;
         }
@@ -403,54 +536,49 @@ public class AccountStorage {
                     skipped++;
                     continue;
                 }
-                String line = rawLine.trim();
-                if (line.isEmpty()) {
-                    continue;
-                }
-                String[] parts = line.split(";", -1);
-                if (parts.length < 3) {
-                    skipped++;
-                    continue;
-                }
-                String email = parts[0];
-                if (looksLikeHeaderEmail(email)) {
-                    skipped++;
-                    continue;
-                }
-                boolean existed;
-                try (PreparedStatement ps = conn.prepareStatement(existsSql)) {
-                    ps.setString(1, email);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        existed = rs.next();
+            String line = rawLine.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            ParsedImportLine parsed = parseImportLine(line, template);
+            if (parsed == null) {
+                skipped++;
+                continue;
+            }
+            String email = parsed.email;
+            boolean existed;
+            try (PreparedStatement ps = conn.prepareStatement(existsSql)) {
+                ps.setString(1, email);
+                try (ResultSet rs = ps.executeQuery()) {
+                    existed = rs.next();
                     }
                 }
 
-                String password = parts.length > 1 ? parts[1] : "";
-                String authenticatorToken = parts.length > 2 ? parts[2] : "";
-                String appPassword = parts.length > 3 ? parts[3] : "";
-                String authenticatorUrl = parts.length > 4 ? parts[4] : "";
-                String messagesUrl = parts.length > 5 ? parts[5] : "";
-
-                Account account = new Account(
-                        email,
-                        password,
-                        authenticatorToken,
-                        appPassword,
-                        authenticatorUrl,
-                        messagesUrl,
-                        null,
-                        false,
-                        false,
-                        AccountStatus.IDLE
-                );
-                // 追加模式：保留 sold/finished/status，仅更新账号资料。
-                boolean keepFlags = existed && mode == ImportMode.APPEND;
-                try {
+            Account account = new Account(
+                    email,
+                    parsed.hasPassword ? parsed.password : "",
+                    parsed.hasRecoveryEmail ? parsed.recoveryEmail : "",
+                    parsed.hasAuthenticatorToken ? parsed.authenticatorToken : "",
+                    parsed.hasAppPassword ? parsed.appPassword : "",
+                    parsed.hasAuthenticatorUrl ? parsed.authenticatorUrl : "",
+                    parsed.hasMessagesUrl ? parsed.messagesUrl : "",
+                    null,
+                    false,
+                    false,
+                    AccountStatus.IDLE
+            );
+            // 追加模式：保留 sold/finished/status，仅更新账号资料。
+            boolean keepFlags = existed && mode == ImportMode.APPEND;
+            try {
+                if (parsed.templateUsed == ImportTemplate.RECOVERY_EMAIL) {
+                    upsertAccountRecoveryEmail(conn, account, keepFlags);
+                } else {
                     upsertAccountPreserveStatus(conn, account, keepFlags);
-                } catch (Exception ex) {
-                    skipped++;
-                    continue;
                 }
+            } catch (Exception ex) {
+                skipped++;
+                continue;
+            }
 
                 if (existed) {
                     updated++;
@@ -828,5 +956,11 @@ public class AccountStorage {
     public enum ImportMode {
         OVERWRITE,
         APPEND
+    }
+
+    public enum ImportTemplate {
+        AUTO,
+        TOKEN,
+        RECOVERY_EMAIL
     }
 }

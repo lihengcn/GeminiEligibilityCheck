@@ -381,6 +381,16 @@
               <input id="file" type="file" accept=".txt" multiple />
               <div id="fileHint" style="font-size: 12px; color: var(--ink-soft); margin-top: 4px;"></div>
             </div>
+
+            <div class="field">
+              <label for="importTemplate" data-i18n="template_label">导入模板</label>
+              <select id="importTemplate">
+                <option value="AUTO" data-i18n="template_auto">自动识别</option>
+                <option value="TOKEN" data-i18n="template_token">账号;密码;2FA 密钥</option>
+                <option value="RECOVERY_EMAIL" data-i18n="template_recovery">账号;密码;恢复邮箱</option>
+              </select>
+              <div id="templateHint" style="font-size: 11px; color: var(--ink-soft);"></div>
+            </div>
             
             <div class="field">
               <label data-i18n="mode_label">导入模式</label>
@@ -538,6 +548,7 @@
                   </th>
                   <th data-i18n="th_email">账号</th>
                   <th data-i18n="th_password">密码</th>
+                  <th data-i18n="th_recovery_email">辅助邮箱</th>
                   <th data-i18n="th_2fa">2FA 密钥</th>
                   <th data-i18n="th_status">状态</th>
                   <th data-i18n="th_sold">出售</th>
@@ -582,6 +593,8 @@
       const messageEl = document.getElementById("message");
       const fileInput = document.getElementById("file");
       const fileHintEl = document.getElementById("fileHint");
+      const templateSelect = document.getElementById("importTemplate");
+      const templateHintEl = document.getElementById("templateHint");
       const modeHintEl = document.getElementById("modeHint");
       const importBtn = document.getElementById("importBtn");
       const applyRefreshBtn = document.getElementById("applyRefresh");
@@ -619,6 +632,13 @@
           file_label: "TXT 文件",
           file_hint_none: "未选择文件（支持多选）",
           file_hint_count: (n) => `已选择 ${n} 个文件`,
+          template_label: "导入模板",
+          template_auto: "自动识别",
+          template_token: "账号;密码;2FA 密钥",
+          template_recovery: "账号;密码;恢复邮箱",
+          template_hint_auto: "自动识别：3列且第3列像邮箱时视为恢复邮箱，否则视为 2FA 密钥。",
+          template_hint_token: "模板：账号;密码;2FA 密钥（可追加 4-6 列）。",
+          template_hint_recovery: "模板：账号;密码;恢复邮箱。",
           mode_label: "导入模式",
           mode_overwrite: "覆盖 (清空后导入)",
           mode_append: "追加 (保留并添加)",
@@ -655,6 +675,7 @@
           status_title: "账号状态",
           th_email: "账号",
           th_password: "密码",
+          th_recovery_email: "辅助邮箱",
           th_2fa: "2FA 密钥",
           th_sheerid: "认证链接",
           th_verify_status: "验证状态",
@@ -737,6 +758,13 @@
           file_label: "TXT File",
           file_hint_none: "No file selected",
           file_hint_count: (n) => `${n} files selected`,
+          template_label: "Import Template",
+          template_auto: "Auto Detect",
+          template_token: "Account;Password;2FA Token",
+          template_recovery: "Account;Password;Recovery Email",
+          template_hint_auto: "Auto: if 3 columns and column 3 looks like email -> recovery email, else 2FA token.",
+          template_hint_token: "Template: account;password;2FA token (optional columns 4-6).",
+          template_hint_recovery: "Template: account;password;recovery email.",
           mode_label: "Import Mode",
           mode_overwrite: "Overwrite (Clear & Import)",
           mode_append: "Append (Keep & Add)",
@@ -773,6 +801,7 @@
           status_title: "Status",
           th_email: "Account",
           th_password: "Password",
+          th_recovery_email: "Recovery Email",
           th_2fa: "2FA Token",
           th_sheerid: "SheerID Link",
           th_verify_status: "Verify Status",
@@ -1218,8 +1247,8 @@
 
       function renderTable(accounts) {
         const t = i18n[currentLang];
-        if (!accounts || accounts.length === 0) {
-          tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--ink-soft);">${t.empty_table}</td></tr>`;
+          if (!accounts || accounts.length === 0) {
+          tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:30px; color:var(--ink-soft);">${t.empty_table}</td></tr>`;
           updateSelectionUI();
           return;
         }
@@ -1243,6 +1272,7 @@
                 </td>
                 <td>${account.email}</td>
                 <td><input class="edit-password" type="text" value="${(account.password || "").replaceAll('"', "&quot;")}" /></td>
+                <td>${account.recoveryEmail || ""}</td>
                 <td><input class="edit-2fa" type="text" value="${(account.authenticatorToken || "").replaceAll('"', "&quot;")}" /></td>
                 <td>
                   <select class="edit-status">
@@ -1272,6 +1302,7 @@
                 </td>
                 <td class="copyable" data-copy-type="email" title="Copy">${account.email}</td>
                 <td class="copyable" data-copy-type="password" title="Copy">${account.password || ""}</td>
+                <td class="copyable" data-copy-type="recovery" title="Copy">${account.recoveryEmail || ""}</td>
                 <td class="copyable" data-copy-type="token" title="Copy" style="font-family:'JetBrains Mono'; font-size:12px;">${account.authenticatorToken || ""}</td>
                 <td class="status-cell" data-email="${account.email}"><span class="${statusChipClass(account)}">${statusLabel(account)}</span></td>
                 <td>
@@ -1397,7 +1428,7 @@
             const passwordInput = row.querySelector(".edit-password");
             const tokenInput = row.querySelector(".edit-2fa");
             const password = passwordInput ? passwordInput.value : (row.children[2]?.textContent || "");
-            const token = tokenInput ? tokenInput.value : (row.children[3]?.textContent || "");
+            const token = tokenInput ? tokenInput.value : (row.children[4]?.textContent || "");
             const text = `|${email}|${password}|${token}|`;
             const ok = await copyText(text);
             if (ok) setMessage(i18n[currentLang].msg_export_done);
@@ -1437,7 +1468,7 @@
               const resp = await fetch("/api/import", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mode: "APPEND", content }),
+                body: JSON.stringify({ mode: "APPEND", content, template: "TOKEN" }),
               });
               if (!resp.ok) throw new Error("save failed");
               if (status) await fetch("/api/status", {
@@ -1500,6 +1531,21 @@
         fileHintEl.textContent = files.length === 0 ? t.file_hint_none : t.file_hint_count(files.length);
       }
 
+      function updateTemplateHint() {
+        if (!templateHintEl || !templateSelect) return;
+        const t = i18n[currentLang];
+        const value = templateSelect.value || "AUTO";
+        if (value === "RECOVERY_EMAIL") {
+          templateHintEl.textContent = t.template_hint_recovery;
+          return;
+        }
+        if (value === "TOKEN") {
+          templateHintEl.textContent = t.template_hint_token;
+          return;
+        }
+        templateHintEl.textContent = t.template_hint_auto;
+      }
+
       async function syncImportModeCapabilities() {
         if (!modeHintEl) return;
         modeHintEl.textContent = "";
@@ -1531,6 +1577,7 @@
         importBtn.disabled = true;
         try {
           const selectedMode = document.querySelector("input[name='mode']:checked").value;
+          const selectedTemplate = templateSelect ? templateSelect.value : "AUTO";
           let totalAdded = 0, totalUpdated = 0, totalSkipped = 0;
           for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -1539,7 +1586,7 @@
             const response = await fetch("/api/import", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ mode, content }),
+              body: JSON.stringify({ mode, content, template: selectedTemplate }),
             });
             if (!response.ok) throw new Error(`导入失败: ${file.name}`);
             const result = await response.json();
@@ -1557,6 +1604,9 @@
       });
 
       fileInput.addEventListener("change", updateFileHint);
+      if (templateSelect) {
+        templateSelect.addEventListener("change", updateTemplateHint);
+      }
 
       // 2FA Logic
       const twofaSecretInput = document.getElementById("twofaSecret");
@@ -1708,7 +1758,7 @@
           const key = node.getAttribute("data-i18n");
           if (i18n[currentLang][key]) node.textContent = i18n[currentLang][key];
         });
-        updateFileHint(); syncImportModeCapabilities(); syncCategoryBar();
+        updateFileHint(); updateTemplateHint(); syncImportModeCapabilities(); syncCategoryBar();
         renderSummary({}, 0); fetchAccounts(); setStatusView(getCurrentStatusView(), false);
       }
 

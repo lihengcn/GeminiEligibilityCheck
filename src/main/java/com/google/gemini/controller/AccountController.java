@@ -20,6 +20,7 @@ import com.google.gemini.service.TotpService;
 import com.google.gemini.storage.AccountStorage;
 import com.google.gemini.storage.AccountStorage.ImportMode;
 import com.google.gemini.storage.AccountStorage.ImportResult;
+import com.google.gemini.storage.AccountStorage.ImportTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -145,7 +146,15 @@ public class AccountController {
         } catch (Exception ex) {
             return ResponseEntity.badRequest().build();
         }
-        ImportResult result = accountStorage.importFromText(request.getContent(), mode);
+        ImportTemplate template = ImportTemplate.AUTO;
+        if (request.getTemplate() != null && !request.getTemplate().isBlank()) {
+            try {
+                template = ImportTemplate.valueOf(request.getTemplate().trim().toUpperCase());
+            } catch (Exception ignored) {
+                template = ImportTemplate.AUTO;
+            }
+        }
+        ImportResult result = accountStorage.importFromText(request.getContent(), mode, template);
         return ResponseEntity.ok(new ImportResponse(result.added(), result.updated(), result.skipped()));
     }
 

@@ -27,6 +27,7 @@ public class StatusView {
             items.add(new AccountItem(
                     account.getEmail(),
                     account.getPassword(),
+                    account.getRecoveryEmail(),
                     account.getAuthenticatorToken(),
                     account.getSheeridUrl(),
                     account.getStatus().name(),
@@ -43,6 +44,7 @@ public class StatusView {
     public static class AccountItem {
         private String email;
         private String password;
+        private String recoveryEmail;
         private String authenticatorToken;
         private String sheeridUrl;
         private String status;
