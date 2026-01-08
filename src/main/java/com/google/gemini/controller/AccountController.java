@@ -16,6 +16,7 @@ import com.google.gemini.dto.StorageInfoResponse;
 import com.google.gemini.dto.SheeridVerifyRequest;
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
+import com.google.gemini.service.SheeridVerifyService;
 import com.google.gemini.service.TotpService;
 import com.google.gemini.storage.AccountStorage;
 import com.google.gemini.storage.AccountStorage.ImportMode;
@@ -29,14 +30,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api")
@@ -46,13 +40,12 @@ public class AccountController {
      */
     private final AccountStorage accountStorage;
     private final TotpService totpService;
-    
-    @org.springframework.beans.factory.annotation.Value("${onekey.apiKey:}")
-    private String onekeyApiKey;
+    private final SheeridVerifyService sheeridVerifyService;
 
-    public AccountController(AccountStorage accountStorage, TotpService totpService) {
+    public AccountController(AccountStorage accountStorage, TotpService totpService, SheeridVerifyService sheeridVerifyService) {
         this.accountStorage = accountStorage;
         this.totpService = totpService;
+        this.sheeridVerifyService = sheeridVerifyService;
     }
 
     /**
@@ -262,7 +255,7 @@ public class AccountController {
     }
 
     @PostMapping(value = "/sheerid-verify", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<StreamingResponseBody> sheeridVerify(@RequestBody SheeridVerifyRequest request) {
+    public ResponseEntity<SseEmitter> sheeridVerify(@RequestBody SheeridVerifyRequest request) {
         if (request == null || request.getVerificationIds() == null || request.getVerificationIds().isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
@@ -270,75 +263,11 @@ public class AccountController {
             return ResponseEntity.badRequest().build();
         }
 
-        StreamingResponseBody stream = outputStream -> {
-            HttpURLConnection conn = null;
-            try {
-                URL pageUrl = new URL("https://batch.1key.me/");
-                HttpURLConnection pageConn = (HttpURLConnection) pageUrl.openConnection();
-                pageConn.setRequestMethod("GET");
-                pageConn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                
-                StringBuilder pageContent = new StringBuilder();
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(pageConn.getInputStream(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        pageContent.append(line);
-                    }
-                }
-                
-                String csrfToken = "";
-                java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("window\\.CSRF_TOKEN\\s*=\\s*\"([^\"]+)\"").matcher(pageContent.toString());
-                if (matcher.find()) {
-                    csrfToken = matcher.group(1);
-                }
-                
-                if (csrfToken.isEmpty()) {
-                    outputStream.write("data: {\"error\":\"Failed to get CSRF token\"}\n\n".getBytes(StandardCharsets.UTF_8));
-                    outputStream.flush();
-                    return;
-                }
-
-                URL apiUrl = new URL("https://batch.1key.me/api/batch");
-                conn = (HttpURLConnection) apiUrl.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("X-CSRF-Token", csrfToken);
-                conn.setRequestProperty("Origin", "https://batch.1key.me");
-                conn.setRequestProperty("Referer", "https://batch.1key.me/");
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                conn.setDoOutput(true);
-
-                String jsonBody = String.format(
-                    "{\"verificationIds\":%s,\"hCaptchaToken\":\"%s\",\"useLucky\":%s,\"programId\":\"%s\"}",
-                    new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request.getVerificationIds()),
-                    (onekeyApiKey != null && !onekeyApiKey.isBlank()) ? onekeyApiKey : (request.getApiKey() != null ? request.getApiKey() : ""),
-                    request.isUseLucky(),
-                    request.getProgramId() != null ? request.getProgramId() : ""
-                );
-
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
-                }
-
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        outputStream.write((line + "\n").getBytes(StandardCharsets.UTF_8));
-                        outputStream.flush();
-                    }
-                }
-            } catch (Exception e) {
-                try {
-                    outputStream.write(("data: {\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}\n\n").getBytes(StandardCharsets.UTF_8));
-                    outputStream.flush();
-                } catch (Exception ignored) {}
-            } finally {
-                if (conn != null) conn.disconnect();
-            }
-        };
+        SseEmitter emitter = new SseEmitter(0L);
+        sheeridVerifyService.verify(emitter, request);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_EVENT_STREAM)
-                .body(stream);
+                .body(emitter);
     }
 }

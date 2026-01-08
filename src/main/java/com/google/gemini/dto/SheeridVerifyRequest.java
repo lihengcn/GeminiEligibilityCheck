@@ -10,6 +10,7 @@ public class SheeridVerifyRequest {
      * hCaptchaToken / API Key
      */
     private String apiKey;
+    private String hCaptchaToken;
     private boolean useLucky;
     private String programId;
 }

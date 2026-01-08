@@ -10,7 +10,7 @@ spring:
     open-in-view: false
 
 onekey:
-  apiKey: ${ONEKEY_API_KEY:123456}
+  apiKey: ${ONEKEY_API_KEY:ee6937c6405b6c8ad290527549edfba8}
 
 # Allow OVERWRITE import mode (dangerous).
 gemini:

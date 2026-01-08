@@ -948,7 +948,7 @@
         const resp = await fetch("/api/sheerid-verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ verificationIds, apiKey, useLucky, programId })
+          body: JSON.stringify({ verificationIds, hCaptchaToken: apiKey, useLucky, programId })
         });
         
         if (!resp.ok) throw new Error("Request failed: " + resp.status);
