@@ -41,7 +41,9 @@ import java.nio.charset.StandardCharsets;
 @RestController
 @RequestMapping("/api")
 public class AccountController {
-    // 账号池与并发控制
+    /**
+     * 账号池与并发控制
+     */
     private final AccountStorage accountStorage;
     private final TotpService totpService;
     
@@ -53,9 +55,11 @@ public class AccountController {
         this.totpService = totpService;
     }
 
+    /**
+     * 拉取一个空闲账号并置为检查中。
+     */
     @GetMapping("/poll")
     public ResponseEntity<Account> poll() {
-        // 拉取一个空闲账号并置为检查中。
         Account account = accountStorage.pollAccount();
         if (account == null) {
             return ResponseEntity.noContent().build();
@@ -63,9 +67,11 @@ public class AccountController {
         return ResponseEntity.ok(account);
     }
 
+    /**
+     * 回调只接受 QUALIFIED 或 INVALID。
+     */
     @PostMapping("/callback")
     public ResponseEntity<String> callback(@RequestBody CallbackRequest request) throws Exception {
-        // 回调只接受 QUALIFIED 或 INVALID。
         if (request == null || request.getEmail() == null || request.getEmail().isBlank()
                 || request.getResult() == null || request.getResult().isBlank()) {
             return ResponseEntity.badRequest().body("email/result required");
@@ -127,9 +133,11 @@ public class AccountController {
         }
     }
 
+    /**
+     * 防止无回调导致卡死，重置检查中状态。
+     */
     @PostMapping("/reset-checking")
     public ResponseEntity<String> resetChecking() {
-        // 防止无回调导致卡死，重置检查中状态。
         int reset = accountStorage.resetCheckingToIdle();
         return ResponseEntity.ok("reset:" + reset);
     }
@@ -265,7 +273,6 @@ public class AccountController {
         StreamingResponseBody stream = outputStream -> {
             HttpURLConnection conn = null;
             try {
-                // 1. 获取 CSRF token
                 URL pageUrl = new URL("https://batch.1key.me/");
                 HttpURLConnection pageConn = (HttpURLConnection) pageUrl.openConnection();
                 pageConn.setRequestMethod("GET");
@@ -291,7 +298,6 @@ public class AccountController {
                     return;
                 }
 
-                // 2. 调用 batch API
                 URL apiUrl = new URL("https://batch.1key.me/api/batch");
                 conn = (HttpURLConnection) apiUrl.openConnection();
                 conn.setRequestMethod("POST");
@@ -305,7 +311,6 @@ public class AccountController {
                 String jsonBody = String.format(
                     "{\"verificationIds\":%s,\"hCaptchaToken\":\"%s\",\"useLucky\":%s,\"programId\":\"%s\"}",
                     new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request.getVerificationIds()),
-                    // 优先用后端配置的 API Key，否则用前端传的
                     (onekeyApiKey != null && !onekeyApiKey.isBlank()) ? onekeyApiKey : (request.getApiKey() != null ? request.getApiKey() : ""),
                     request.isUseLucky(),
                     request.getProgramId() != null ? request.getProgramId() : ""
@@ -315,7 +320,6 @@ public class AccountController {
                     os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
                 }
 
-                // 3. 流式转发响应
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {

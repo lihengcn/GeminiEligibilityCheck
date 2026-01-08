@@ -2,61 +2,40 @@ package com.google.gemini.storage;
 
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Value;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import jakarta.annotation.PostConstruct;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import com.google.gemini.entity.SheeridLink;
+import com.google.gemini.repository.AccountRepository;
+import com.google.gemini.repository.SheeridLinkRepository;
+import jakarta.persistence.EntityManager;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class AccountStorage {
     private static final Logger log = LoggerFactory.getLogger(AccountStorage.class);
-    private final Map<String, Account> accounts = new LinkedHashMap<>();
 
-    private final ObjectMapper objectMapper;
-    private final Path persistencePath;
-
-    private final String pgUrl;
-    private final String pgUser;
-    private final String pgPassword;
-    private final boolean pgMigrateFromFile;
+    private final AccountRepository accountRepository;
+    private final SheeridLinkRepository sheeridLinkRepository;
+    private final EntityManager entityManager;
     private final boolean pgAllowOverwrite;
-    private final boolean pgRequired;
-    private volatile boolean usePostgres;
 
     public AccountStorage(
-            ObjectMapper objectMapper,
-            @Value("${gemini.storage.path:accounts-state.json}") String persistencePath,
-            @Value("${gemini.pg.url:}") String pgUrl,
-            @Value("${gemini.pg.user:}") String pgUser,
-            @Value("${gemini.pg.password:}") String pgPassword,
-            @Value("${gemini.pg.migrateFromFile:false}") boolean pgMigrateFromFile,
-            @Value("${gemini.pg.allowOverwrite:false}") boolean pgAllowOverwrite,
-            @Value("${gemini.pg.required:false}") boolean pgRequired
+            AccountRepository accountRepository,
+            SheeridLinkRepository sheeridLinkRepository,
+            EntityManager entityManager,
+            @Value("${gemini.pg.allowOverwrite:false}") boolean pgAllowOverwrite
     ) {
-        this.objectMapper = objectMapper;
-        this.persistencePath = Path.of(persistencePath);
-        this.pgUrl = pgUrl == null ? "" : pgUrl.trim();
-        this.pgUser = pgUser == null ? "" : pgUser.trim();
-        this.pgPassword = pgPassword == null ? "" : pgPassword;
-        this.pgMigrateFromFile = pgMigrateFromFile;
+        this.accountRepository = accountRepository;
+        this.sheeridLinkRepository = sheeridLinkRepository;
+        this.entityManager = entityManager;
         this.pgAllowOverwrite = pgAllowOverwrite;
-        this.pgRequired = pgRequired;
     }
 
     private static boolean looksLikeHeaderEmail(String email) {
@@ -72,302 +51,6 @@ public class AccountStorage {
             return true;
         }
         return trimmed.contains("{") || trimmed.contains("}");
-    }
-
-    @PostConstruct
-    public void init() {
-        this.usePostgres = !this.pgUrl.isBlank();
-        if (usePostgres) {
-            initPostgres();
-            migrateLegacyFinishedToProductPostgres();
-            if (pgMigrateFromFile) {
-                migrateFromLocalFileIfDbEmpty();
-            }
-            return;
-        }
-        loadFromDisk();
-    }
-
-    private synchronized void loadFromDisk() {
-        try {
-            if (!Files.exists(persistencePath)) {
-                return;
-            }
-            List<Account> list = objectMapper.readValue(
-                    Files.readAllBytes(persistencePath),
-                    new TypeReference<>() {
-                    }
-            );
-            accounts.clear();
-            if (list == null) {
-                return;
-            }
-            boolean migrated = false;
-            for (Account account : list) {
-                if (account == null || account.getEmail() == null || account.getEmail().isBlank()) {
-                    continue;
-                }
-                // Legacy migration: finished=true + QUALIFIED => PRODUCT, and clear finished flag.
-                if (account.isFinished()) {
-                    if (account.getStatus() == AccountStatus.QUALIFIED) {
-                        account.setStatus(AccountStatus.PRODUCT);
-                    }
-                    account.setFinished(false);
-                    migrated = true;
-                }
-                accounts.put(account.getEmail(), account);
-            }
-            if (migrated) {
-                persistToDisk();
-            }
-            log.info("Loaded {} accounts from {}", accounts.size(), persistencePath.toAbsolutePath());
-        } catch (Exception ex) {
-            log.warn("Failed to load accounts from {}: {}", persistencePath.toAbsolutePath(), ex.getMessage());
-        }
-    }
-
-    private void migrateLegacyFinishedToProductPostgres() {
-        // Legacy migration: finished=true + QUALIFIED => PRODUCT, then clear finished flag for all rows.
-        // This removes the separate "finished" state while keeping other statuses unchanged.
-        String promoteSql = "UPDATE gem_accounts SET status='PRODUCT', updated_at = NOW() WHERE finished=TRUE AND status='QUALIFIED'";
-        String clearSql = "UPDATE gem_accounts SET finished=FALSE, updated_at = NOW() WHERE finished=TRUE";
-        try (Connection conn = openPg(); Statement st = conn.createStatement()) {
-            st.executeUpdate(promoteSql);
-            st.executeUpdate(clearSql);
-        } catch (Exception ex) {
-            log.warn("PostgreSQL migrateLegacyFinishedToProduct failed: {}", ex.getMessage());
-        }
-    }
-
-    private void persistToDisk() {
-        if (usePostgres) {
-            return;
-        }
-        try {
-            Path parent = persistencePath.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            Path tmp = persistencePath.resolveSibling(persistencePath.getFileName() + ".tmp");
-            byte[] bytes = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(listAccounts());
-            Files.write(tmp, bytes);
-            try {
-                Files.move(tmp, persistencePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (Exception atomicFail) {
-                Files.move(tmp, persistencePath, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (Exception ex) {
-            log.warn("Failed to persist accounts to {}: {}", persistencePath.toAbsolutePath(), ex.getMessage());
-        }
-    }
-
-    private Connection openPg() throws Exception {
-        if (pgUser.isBlank()) {
-            return DriverManager.getConnection(pgUrl);
-        }
-        return DriverManager.getConnection(pgUrl, pgUser, pgPassword);
-    }
-
-    private void initPostgres() {
-        try (Connection conn = openPg(); Statement st = conn.createStatement()) {
-            st.execute("""
-                    CREATE TABLE IF NOT EXISTS gem_accounts (
-                      email TEXT PRIMARY KEY,
-                      password TEXT NOT NULL DEFAULT '',
-                      recovery_email TEXT NOT NULL DEFAULT '',
-                      authenticator_token TEXT NOT NULL DEFAULT '',
-                      app_password TEXT NOT NULL DEFAULT '',
-                      authenticator_url TEXT NOT NULL DEFAULT '',
-                      messages_url TEXT NOT NULL DEFAULT '',
-                      sold BOOLEAN NOT NULL DEFAULT FALSE,
-                      finished BOOLEAN NOT NULL DEFAULT FALSE,
-                      status TEXT NOT NULL DEFAULT 'IDLE',
-                      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    );
-                    """);
-            st.execute("ALTER TABLE gem_accounts ADD COLUMN IF NOT EXISTS recovery_email TEXT NOT NULL DEFAULT '';");
-            try {
-                st.executeUpdate("""
-                        UPDATE gem_accounts
-                        SET recovery_email = auxiliary_email
-                        WHERE recovery_email = '' AND auxiliary_email <> ''
-                        """);
-            } catch (Exception ex) {
-                log.info("Skip auxiliary_email migration: {}", ex.getMessage());
-            }
-            st.execute("""
-                    CREATE TABLE IF NOT EXISTS gem_sheerid_links (
-                      email TEXT PRIMARY KEY REFERENCES gem_accounts(email) ON DELETE CASCADE,
-                      sheerid_url TEXT NOT NULL DEFAULT '',
-                      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    );
-                    """);
-            st.execute("CREATE INDEX IF NOT EXISTS idx_gem_accounts_status_sold ON gem_accounts(status, sold);");
-            log.info("PostgreSQL enabled: {}", pgUrl);
-        } catch (Exception ex) {
-            if (pgRequired) {
-                throw new IllegalStateException("PostgreSQL is required but init failed: " + ex.getMessage(), ex);
-            }
-            log.warn("Failed to init PostgreSQL (falling back to local file): {}", ex.getMessage());
-            this.usePostgres = false;
-            loadFromDisk();
-        }
-    }
-
-    private boolean dbIsEmpty() {
-        try (Connection conn = openPg();
-             PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM gem_accounts LIMIT 1");
-             ResultSet rs = ps.executeQuery()) {
-            return !rs.next();
-        } catch (Exception ex) {
-            log.warn("Failed to query DB emptiness: {}", ex.getMessage());
-            return false;
-        }
-    }
-
-    private void migrateFromLocalFileIfDbEmpty() {
-        if (!Files.exists(persistencePath)) {
-            return;
-        }
-        if (!dbIsEmpty()) {
-            return;
-        }
-        try {
-            List<Account> list = objectMapper.readValue(
-                    Files.readAllBytes(persistencePath),
-                    new TypeReference<>() {
-                    }
-            );
-            if (list == null || list.isEmpty()) {
-                return;
-            }
-            int migrated = 0;
-            try (Connection conn = openPg()) {
-                conn.setAutoCommit(false);
-                for (Account a : list) {
-                    if (a == null || a.getEmail() == null || a.getEmail().isBlank()) {
-                        continue;
-                    }
-                    upsertAccountPreserveStatus(conn, a, false);
-                    migrated++;
-                }
-                conn.commit();
-            }
-            log.info("Migrated {} accounts from {} into PostgreSQL", migrated, persistencePath.toAbsolutePath());
-        } catch (Exception ex) {
-            log.warn("Failed to migrate from local file {}: {}", persistencePath.toAbsolutePath(), ex.getMessage());
-        }
-    }
-
-    private static Account mapRow(ResultSet rs) throws Exception {
-        Account a = new Account();
-        a.setEmail(rs.getString("email"));
-        a.setPassword(rs.getString("password"));
-        try {
-            a.setRecoveryEmail(rs.getString("recovery_email"));
-        } catch (Exception ignored) {
-            a.setRecoveryEmail("");
-        }
-        a.setAuthenticatorToken(rs.getString("authenticator_token"));
-        a.setAppPassword(rs.getString("app_password"));
-        a.setAuthenticatorUrl(rs.getString("authenticator_url"));
-        a.setMessagesUrl(rs.getString("messages_url"));
-        try {
-            a.setSheeridUrl(rs.getString("sheerid_url"));
-        } catch (Exception ignored) {
-            a.setSheeridUrl(null);
-        }
-        a.setSold(rs.getBoolean("sold"));
-        a.setFinished(rs.getBoolean("finished"));
-        String status = rs.getString("status");
-        try {
-            a.setStatus(AccountStatus.valueOf(status));
-        } catch (Exception ignored) {
-            a.setStatus(AccountStatus.IDLE);
-        }
-        return a;
-    }
-
-    private void upsertAccountPreserveStatus(Connection conn, Account account, boolean keepFlags) throws Exception {
-        String sql = keepFlags
-                ? """
-                INSERT INTO gem_accounts(email,password,recovery_email,authenticator_token,app_password,authenticator_url,messages_url)
-                VALUES (?,?,?,?,?,?,?)
-                ON CONFLICT (email) DO UPDATE SET
-                  password=EXCLUDED.password,
-                  recovery_email=EXCLUDED.recovery_email,
-                  authenticator_token=EXCLUDED.authenticator_token,
-                  app_password=EXCLUDED.app_password,
-                  authenticator_url=EXCLUDED.authenticator_url,
-                  messages_url=EXCLUDED.messages_url,
-                  updated_at=NOW()
-                """
-                : """
-                INSERT INTO gem_accounts(email,password,recovery_email,authenticator_token,app_password,authenticator_url,messages_url,sold,finished,status)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT (email) DO UPDATE SET
-                  password=EXCLUDED.password,
-                  recovery_email=EXCLUDED.recovery_email,
-                  authenticator_token=EXCLUDED.authenticator_token,
-                  app_password=EXCLUDED.app_password,
-                  authenticator_url=EXCLUDED.authenticator_url,
-                  messages_url=EXCLUDED.messages_url,
-                  sold=EXCLUDED.sold,
-                  finished=EXCLUDED.finished,
-                  status=EXCLUDED.status,
-                  updated_at=NOW()
-                """;
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, account.getEmail());
-            ps.setString(2, account.getPassword() == null ? "" : account.getPassword());
-            ps.setString(3, account.getRecoveryEmail() == null ? "" : account.getRecoveryEmail());
-            ps.setString(4, account.getAuthenticatorToken() == null ? "" : account.getAuthenticatorToken());
-            ps.setString(5, account.getAppPassword() == null ? "" : account.getAppPassword());
-            ps.setString(6, account.getAuthenticatorUrl() == null ? "" : account.getAuthenticatorUrl());
-            ps.setString(7, account.getMessagesUrl() == null ? "" : account.getMessagesUrl());
-            if (!keepFlags) {
-                ps.setBoolean(8, account.isSold());
-                ps.setBoolean(9, account.isFinished());
-                ps.setString(10, account.getStatus() == null ? AccountStatus.IDLE.name() : account.getStatus().name());
-            }
-            ps.executeUpdate();
-        }
-    }
-
-    private void upsertAccountRecoveryEmail(Connection conn, Account account, boolean keepFlags) throws Exception {
-        String sql = keepFlags
-                ? """
-                INSERT INTO gem_accounts(email,password,recovery_email)
-                VALUES (?,?,?)
-                ON CONFLICT (email) DO UPDATE SET
-                  password=EXCLUDED.password,
-                  recovery_email=EXCLUDED.recovery_email,
-                  updated_at=NOW()
-                """
-                : """
-                INSERT INTO gem_accounts(email,password,recovery_email,sold,finished,status)
-                VALUES (?,?,?,?,?,?)
-                ON CONFLICT (email) DO UPDATE SET
-                  password=EXCLUDED.password,
-                  recovery_email=EXCLUDED.recovery_email,
-                  sold=EXCLUDED.sold,
-                  finished=EXCLUDED.finished,
-                  status=EXCLUDED.status,
-                  updated_at=NOW()
-                """;
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, account.getEmail());
-            ps.setString(2, account.getPassword() == null ? "" : account.getPassword());
-            ps.setString(3, account.getRecoveryEmail() == null ? "" : account.getRecoveryEmail());
-            if (!keepFlags) {
-                ps.setBoolean(4, account.isSold());
-                ps.setBoolean(5, account.isFinished());
-                ps.setString(6, account.getStatus() == null ? AccountStatus.IDLE.name() : account.getStatus().name());
-            }
-            ps.executeUpdate();
-        }
     }
 
     private static boolean looksLikeRecoveryEmail(String value) {
@@ -441,20 +124,22 @@ public class AccountStorage {
         return parsed;
     }
 
-    public synchronized ImportResult importFromText(String content, ImportMode mode) {
+    public ImportResult importFromText(String content, ImportMode mode) {
         return importFromText(content, mode, ImportTemplate.AUTO);
     }
 
-    public synchronized ImportResult importFromText(String content, ImportMode mode, ImportTemplate template) {
-        if (usePostgres) {
-            return importFromTextPostgres(content, mode, template);
-        }
-        if (mode == ImportMode.OVERWRITE) {
-            accounts.clear();
+    @Transactional
+    public ImportResult importFromText(String content, ImportMode mode, ImportTemplate template) {
+        if (mode == ImportMode.OVERWRITE && !pgAllowOverwrite) {
+            mode = ImportMode.APPEND;
         }
         int added = 0;
         int updated = 0;
         int skipped = 0;
+        if (mode == ImportMode.OVERWRITE) {
+            sheeridLinkRepository.deleteAll();
+            accountRepository.deleteAll();
+        }
         String[] lines = content.split("\\r?\\n");
         for (String rawLine : lines) {
             if (rawLine == null) {
@@ -470,484 +155,249 @@ public class AccountStorage {
                 skipped++;
                 continue;
             }
-            String email = parsed.email;
-            Account existing = accounts.get(email);
-            if (existing != null) {
-                // 追加模式下保留原状态，仅更新账号资料。
-                if (parsed.hasPassword) {
-                    existing.setPassword(parsed.password);
-                }
-                if (parsed.hasRecoveryEmail) {
-                    existing.setRecoveryEmail(parsed.recoveryEmail);
-                }
-                if (parsed.hasAuthenticatorToken) {
-                    existing.setAuthenticatorToken(parsed.authenticatorToken);
-                }
-                if (parsed.hasAppPassword) {
-                    existing.setAppPassword(parsed.appPassword);
-                }
-                if (parsed.hasAuthenticatorUrl) {
-                    existing.setAuthenticatorUrl(parsed.authenticatorUrl);
-                }
-                if (parsed.hasMessagesUrl) {
-                    existing.setMessagesUrl(parsed.messagesUrl);
-                }
-                updated++;
-                continue;
-            }
-            Account account = new Account(
-                    email,
-                    parsed.hasPassword ? parsed.password : "",
-                    parsed.hasRecoveryEmail ? parsed.recoveryEmail : "",
-                    parsed.hasAuthenticatorToken ? parsed.authenticatorToken : "",
-                    parsed.hasAppPassword ? parsed.appPassword : "",
-                    parsed.hasAuthenticatorUrl ? parsed.authenticatorUrl : "",
-                    parsed.hasMessagesUrl ? parsed.messagesUrl : "",
-                    null,
-                    false,
-                    false,
-                    AccountStatus.IDLE
-            );
-            accounts.put(email, account);
-            added++;
-        }
-        persistToDisk();
-        return new ImportResult(added, updated, skipped);
-    }
-
-    private ImportResult importFromTextPostgres(String content, ImportMode mode, ImportTemplate template) {
-        if (mode == ImportMode.OVERWRITE && !pgAllowOverwrite) {
-            mode = ImportMode.APPEND;
-        }
-        int added = 0;
-        int updated = 0;
-        int skipped = 0;
-        String[] lines = content.split("\\r?\\n");
-        try (Connection conn = openPg()) {
-            conn.setAutoCommit(false);
-            if (mode == ImportMode.OVERWRITE) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("DELETE FROM gem_accounts");
-                }
-            }
-            String existsSql = "SELECT 1 FROM gem_accounts WHERE email = ?";
-            for (String rawLine : lines) {
-                if (rawLine == null) {
-                    skipped++;
-                    continue;
-                }
-            String line = rawLine.trim();
-            if (line.isEmpty()) {
-                continue;
-            }
-            ParsedImportLine parsed = parseImportLine(line, template);
-            if (parsed == null) {
-                skipped++;
-                continue;
-            }
-            String email = parsed.email;
-            boolean existed;
-            try (PreparedStatement ps = conn.prepareStatement(existsSql)) {
-                ps.setString(1, email);
-                try (ResultSet rs = ps.executeQuery()) {
-                    existed = rs.next();
-                    }
-                }
-
-            Account account = new Account(
-                    email,
-                    parsed.hasPassword ? parsed.password : "",
-                    parsed.hasRecoveryEmail ? parsed.recoveryEmail : "",
-                    parsed.hasAuthenticatorToken ? parsed.authenticatorToken : "",
-                    parsed.hasAppPassword ? parsed.appPassword : "",
-                    parsed.hasAuthenticatorUrl ? parsed.authenticatorUrl : "",
-                    parsed.hasMessagesUrl ? parsed.messagesUrl : "",
-                    null,
-                    false,
-                    false,
-                    AccountStatus.IDLE
-            );
-            // 追加模式：保留 sold/finished/status，仅更新账号资料。
-            boolean keepFlags = existed && mode == ImportMode.APPEND;
             try {
-                if (parsed.templateUsed == ImportTemplate.RECOVERY_EMAIL) {
-                    upsertAccountRecoveryEmail(conn, account, keepFlags);
+                if (importSingleLine(parsed, mode)) {
+                    added++;
                 } else {
-                    upsertAccountPreserveStatus(conn, account, keepFlags);
+                    updated++;
                 }
             } catch (Exception ex) {
                 skipped++;
-                continue;
+                log.warn("JPA import failed for {}: {}", parsed.email, ex.getMessage());
             }
-
-                if (existed) {
-                    updated++;
-                } else {
-                    added++;
-                }
-            }
-            conn.commit();
-        } catch (Exception ex) {
-            log.warn("PostgreSQL import failed: {}", ex.getMessage());
         }
         return new ImportResult(added, updated, skipped);
     }
 
-    public synchronized Account pollAccount() {
-        if (usePostgres) {
-            return pollAccountPostgres();
+    private boolean importSingleLine(ParsedImportLine parsed, ImportMode mode) {
+        String email = parsed.email;
+        Account existing = accountRepository.findById(email).orElse(null);
+        if (existing != null && mode == ImportMode.APPEND) {
+            applyImportUpdate(existing, parsed);
+            accountRepository.save(existing);
+            return false;
         }
-        // 同步锁保证并发下不会分配到同一个账号。
-        for (Account account : accounts.values()) {
-            if (!account.isSold() && account.getStatus() == AccountStatus.IDLE) {
-                account.setStatus(AccountStatus.CHECKING);
-                persistToDisk();
-                return account;
-            }
-        }
-        return null;
+        Account account = new Account();
+        account.setEmail(email);
+        account.setPassword(parsed.hasPassword ? parsed.password : "");
+        account.setRecoveryEmail(parsed.hasRecoveryEmail ? parsed.recoveryEmail : "");
+        account.setAuthenticatorToken(parsed.hasAuthenticatorToken ? parsed.authenticatorToken : "");
+        account.setAppPassword(parsed.hasAppPassword ? parsed.appPassword : "");
+        account.setAuthenticatorUrl(parsed.hasAuthenticatorUrl ? parsed.authenticatorUrl : "");
+        account.setMessagesUrl(parsed.hasMessagesUrl ? parsed.messagesUrl : "");
+        account.setSold(false);
+        account.setFinished(false);
+        account.setStatus(AccountStatus.IDLE);
+        accountRepository.save(account);
+        return true;
     }
 
-    private Account pollAccountPostgres() {
-        String sql = """
-                WITH candidate AS (
-                  SELECT email
-                  FROM gem_accounts
-                  WHERE sold = FALSE AND status = 'IDLE'
-                  ORDER BY email
-                  LIMIT 1
-                  FOR UPDATE SKIP LOCKED
-                )
-                UPDATE gem_accounts a
-                SET status = 'CHECKING', updated_at = NOW()
-                FROM candidate
-                WHERE a.email = candidate.email
-                RETURNING a.*;
-                """;
-        try (Connection conn = openPg()) {
-            conn.setAutoCommit(false);
-            try (PreparedStatement ps = conn.prepareStatement(sql);
-                 ResultSet rs = ps.executeQuery()) {
-                Account account = null;
-                if (rs.next()) {
-                    account = mapRow(rs);
-                }
-                conn.commit();
-                return account;
+    private void applyImportUpdate(Account account, ParsedImportLine parsed) {
+        if (parsed.hasPassword) {
+            account.setPassword(parsed.password);
+        }
+        if (parsed.templateUsed == ImportTemplate.RECOVERY_EMAIL) {
+            if (parsed.hasRecoveryEmail) {
+                account.setRecoveryEmail(parsed.recoveryEmail);
             }
-        } catch (Exception ex) {
-            log.warn("PostgreSQL poll failed: {}", ex.getMessage());
+            return;
+        }
+        if (parsed.hasAuthenticatorToken) {
+            account.setAuthenticatorToken(parsed.authenticatorToken);
+        }
+        if (parsed.hasAppPassword) {
+            account.setAppPassword(parsed.appPassword);
+        }
+        if (parsed.hasAuthenticatorUrl) {
+            account.setAuthenticatorUrl(parsed.authenticatorUrl);
+        }
+        if (parsed.hasMessagesUrl) {
+            account.setMessagesUrl(parsed.messagesUrl);
+        }
+    }
+
+    @Transactional
+    public Account pollAccount() {
+        String email = pollAccountEmail();
+        if (email == null) {
             return null;
         }
-    }
-
-    public synchronized Account updateStatus(String email, AccountStatus status) {
-        if (usePostgres) {
-            return updateStatusPostgres(email, status);
-        }
-        Account account = accounts.get(email);
+        Account account = accountRepository.findById(email).orElse(null);
         if (account == null) {
             return null;
         }
-        // 仅在内存中更新状态。
-        account.setStatus(status);
-        persistToDisk();
+        account.setStatus(AccountStatus.CHECKING);
+        accountRepository.save(account);
+        attachSheerid(account);
         return account;
     }
 
-    private Account updateStatusPostgres(String email, AccountStatus status) {
+    private String pollAccountEmail() {
+        String sql = """
+                SELECT email
+                FROM gem_accounts
+                WHERE sold = FALSE AND status = 'IDLE'
+                ORDER BY email
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """;
+        @SuppressWarnings("unchecked")
+        List<Object> result = entityManager.createNativeQuery(sql).getResultList();
+        if (result.isEmpty()) {
+            return null;
+        }
+        return result.get(0).toString();
+    }
+
+    @Transactional
+    public Account updateStatus(String email, AccountStatus status) {
         if (email == null || email.isBlank() || status == null) {
             return null;
         }
-        String sql = "UPDATE gem_accounts SET status = ?, updated_at = NOW() WHERE email = ? RETURNING *";
-        try (Connection conn = openPg();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, status.name());
-            ps.setString(2, email);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return null;
-                }
-                return mapRow(rs);
-            }
-        } catch (Exception ex) {
-            log.warn("PostgreSQL updateStatus failed: {}", ex.getMessage());
+        String trimmed = email.trim();
+        Account account = accountRepository.findById(trimmed).orElse(null);
+        if (account == null) {
             return null;
         }
+        account.setStatus(status);
+        accountRepository.save(account);
+        attachSheerid(account);
+        return account;
     }
 
-    public synchronized int resetCheckingToIdle() {
-        if (usePostgres) {
-            return resetCheckingToIdlePostgres();
-        }
-        // 将所有检查中的账号重置为空闲。
-        int reset = 0;
-        for (Account account : accounts.values()) {
-            if (account.getStatus() == AccountStatus.CHECKING) {
-                account.setStatus(AccountStatus.IDLE);
-                reset++;
-            }
-        }
-        if (reset > 0) {
-            persistToDisk();
-        }
-        return reset;
+    @Transactional
+    public int resetCheckingToIdle() {
+        return accountRepository.resetCheckingToIdle();
     }
 
-    private int resetCheckingToIdlePostgres() {
-        String sql = "UPDATE gem_accounts SET status='IDLE', updated_at = NOW() WHERE status='CHECKING'";
-        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            return ps.executeUpdate();
-        } catch (Exception ex) {
-            log.warn("PostgreSQL resetCheckingToIdle failed: {}", ex.getMessage());
-            return 0;
-        }
-    }
-
-    public synchronized boolean restoreStatus(String email, AccountStatus status) {
-        if (usePostgres) {
-            return restoreStatusPostgres(email, status);
-        }
+    @Transactional
+    public boolean restoreStatus(String email, AccountStatus status) {
         if (email == null || email.isBlank() || status == null) {
             return false;
         }
-        Account account = accounts.get(email);
+        String trimmed = email.trim();
+        Account account = accountRepository.findById(trimmed).orElse(null);
         if (account == null) {
             return false;
         }
         account.setStatus(status);
-        persistToDisk();
+        accountRepository.save(account);
         return true;
     }
 
-    private boolean restoreStatusPostgres(String email, AccountStatus status) {
-        if (email == null || email.isBlank() || status == null) {
-            return false;
-        }
-        String sql = "UPDATE gem_accounts SET status=?, updated_at = NOW() WHERE email=?";
-        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, status.name());
-            ps.setString(2, email);
-            return ps.executeUpdate() > 0;
-        } catch (Exception ex) {
-            log.warn("PostgreSQL restoreStatus failed: {}", ex.getMessage());
-            return false;
-        }
-    }
-
-    public synchronized boolean updateSold(String email, boolean sold) {
-        if (usePostgres) {
-            return updateSoldPostgres(email, sold);
-        }
-        if (email == null || email.isBlank()) {
-            return false;
-        }
-        Account account = accounts.get(email);
-        if (account == null) {
-            return false;
-        }
-        account.setSold(sold);
-        persistToDisk();
-        return true;
-    }
-
-    private boolean updateSoldPostgres(String email, boolean sold) {
-        if (email == null || email.isBlank()) {
-            return false;
-        }
-        String sql = "UPDATE gem_accounts SET sold=?, updated_at = NOW() WHERE email=?";
-        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setBoolean(1, sold);
-            ps.setString(2, email);
-            return ps.executeUpdate() > 0;
-        } catch (Exception ex) {
-            log.warn("PostgreSQL updateSold failed: {}", ex.getMessage());
-            return false;
-        }
-    }
-
-    public synchronized boolean updateFinished(String email, boolean finished) {
-        // Backward-compat: "finished" is deprecated; map it to status PRODUCT.
+    @Transactional
+    public boolean updateSold(String email, boolean sold) {
         if (email == null || email.isBlank()) {
             return false;
         }
         String trimmed = email.trim();
-        if (usePostgres) {
-            return updateFinishedPostgresCompat(trimmed, finished);
+        return accountRepository.updateSoldByEmail(trimmed, sold) > 0;
+    }
+
+    @Transactional
+    public boolean updateFinished(String email, boolean finished) {
+        if (email == null || email.isBlank()) {
+            return false;
         }
-        Account account = accounts.get(trimmed);
+        String trimmed = email.trim();
+        Account account = accountRepository.findById(trimmed).orElse(null);
         if (account == null) {
             return false;
         }
-        boolean changed = false;
         if (finished) {
             if (account.getStatus() != AccountStatus.PRODUCT) {
                 account.setStatus(AccountStatus.PRODUCT);
-                changed = true;
             }
-        } else {
-            if (account.getStatus() == AccountStatus.PRODUCT) {
-                account.setStatus(AccountStatus.QUALIFIED);
-                changed = true;
-            }
+        } else if (account.getStatus() == AccountStatus.PRODUCT) {
+            account.setStatus(AccountStatus.QUALIFIED);
         }
-        if (changed) {
-            persistToDisk();
-        }
+        accountRepository.save(account);
         return true;
     }
 
-    private boolean updateFinishedPostgresCompat(String email, boolean finished) {
-        if (email == null || email.isBlank()) {
-            return false;
-        }
-        String sql = finished
-                ? "UPDATE gem_accounts SET status='PRODUCT', updated_at = NOW() WHERE email=?"
-                : "UPDATE gem_accounts SET status=CASE WHEN status='PRODUCT' THEN 'QUALIFIED' ELSE status END, updated_at = NOW() WHERE email=?";
-        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, email);
-            return ps.executeUpdate() > 0;
-        } catch (Exception ex) {
-            log.warn("PostgreSQL updateFinished compat failed: {}", ex.getMessage());
-            return false;
-        }
-    }
-
-    public synchronized boolean deleteAccount(String email) {
-        if (usePostgres) {
-            return deleteAccountPostgres(email);
-        }
-        if (email == null || email.isBlank()) {
-            return false;
-        }
-        Account removed = accounts.remove(email);
-        if (removed == null) {
-            return false;
-        }
-        persistToDisk();
-        return true;
-    }
-
-    private boolean deleteAccountPostgres(String email) {
-        if (email == null || email.isBlank()) {
-            return false;
-        }
-        String sql = "DELETE FROM gem_accounts WHERE email=?";
-        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, email);
-            return ps.executeUpdate() > 0;
-        } catch (Exception ex) {
-            log.warn("PostgreSQL deleteAccount failed: {}", ex.getMessage());
-            return false;
-        }
-    }
-
-    public synchronized List<Account> listAccounts() {
-        if (usePostgres) {
-            return listAccountsPostgres();
-        }
-        return new ArrayList<>(accounts.values());
-    }
-
-    public synchronized boolean exists(String email) {
+    @Transactional
+    public boolean deleteAccount(String email) {
         if (email == null || email.isBlank()) {
             return false;
         }
         String trimmed = email.trim();
-        if (usePostgres) {
-            return existsPostgres(trimmed);
+        if (!accountRepository.existsById(trimmed)) {
+            return false;
         }
-        return accounts.containsKey(trimmed);
+        accountRepository.deleteById(trimmed);
+        return true;
     }
 
-    private List<Account> listAccountsPostgres() {
-        String sql = """
-                SELECT a.*, l.sheerid_url
-                FROM gem_accounts a
-                LEFT JOIN gem_sheerid_links l ON l.email = a.email
-                ORDER BY a.email
-                """;
-        List<Account> list = new ArrayList<>();
-        try (Connection conn = openPg();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                list.add(mapRow(rs));
-            }
-        } catch (Exception ex) {
-            log.warn("PostgreSQL listAccounts failed: {}", ex.getMessage());
-        }
+    @Transactional(readOnly = true)
+    public List<Account> listAccounts() {
+        List<Account> list = accountRepository.findAll(Sort.by(Sort.Direction.ASC, "email"));
+        attachSheerid(list);
         return list;
     }
 
-    public synchronized void upsertSheeridUrl(String email, String sheeridUrl) {
+    @Transactional(readOnly = true)
+    public boolean exists(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        return accountRepository.existsById(email.trim());
+    }
+
+    @Transactional
+    public void upsertSheeridUrl(String email, String sheeridUrl) {
         if (email == null || email.isBlank()) {
             return;
         }
         String trimmedEmail = email.trim();
         String url = sheeridUrl == null ? "" : sheeridUrl.trim();
-        if (usePostgres) {
-            if (url.isEmpty()) {
-                deleteSheeridUrlPostgres(trimmedEmail);
-            } else {
-                upsertSheeridUrlPostgres(trimmedEmail, url);
-            }
+        if (url.isEmpty()) {
+            sheeridLinkRepository.deleteById(trimmedEmail);
             return;
         }
-        Account account = accounts.get(trimmedEmail);
-        if (account == null) {
-            return;
-        }
-        account.setSheeridUrl(url.isEmpty() ? null : url);
-        persistToDisk();
-    }
-
-    private boolean existsPostgres(String email) {
-        String sql = "SELECT 1 FROM gem_accounts WHERE email = ? LIMIT 1";
-        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, email);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
-            }
-        } catch (Exception ex) {
-            log.warn("PostgreSQL exists failed: {}", ex.getMessage());
-            return false;
-        }
-    }
-
-    private void upsertSheeridUrlPostgres(String email, String url) {
-        String sql = """
-                INSERT INTO gem_sheerid_links(email, sheerid_url)
-                VALUES (?, ?)
-                ON CONFLICT (email) DO UPDATE SET
-                  sheerid_url = EXCLUDED.sheerid_url,
-                  updated_at = NOW()
-                """;
-        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, email);
-            ps.setString(2, url == null ? "" : url);
-            ps.executeUpdate();
-        } catch (Exception ex) {
-            log.warn("PostgreSQL upsertSheeridUrl failed: {}", ex.getMessage());
-        }
-    }
-
-    private void deleteSheeridUrlPostgres(String email) {
-        String sql = "DELETE FROM gem_sheerid_links WHERE email = ?";
-        try (Connection conn = openPg(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, email);
-            ps.executeUpdate();
-        } catch (Exception ex) {
-            log.warn("PostgreSQL deleteSheeridUrl failed: {}", ex.getMessage());
-        }
+        sheeridLinkRepository.save(new SheeridLink(trimmedEmail, url));
     }
 
     public boolean isPostgresEnabled() {
-        return usePostgres;
+        return true;
     }
 
     public boolean isPgAllowOverwrite() {
         return pgAllowOverwrite;
+    }
+
+    private void attachSheerid(Account account) {
+        if (account == null || account.getEmail() == null) {
+            return;
+        }
+        SheeridLink link = sheeridLinkRepository.findById(account.getEmail()).orElse(null);
+        account.setSheeridUrl(link == null ? null : link.getSheeridUrl());
+    }
+
+    private void attachSheerid(List<Account> accounts) {
+        if (accounts == null || accounts.isEmpty()) {
+            return;
+        }
+        List<String> emails = new ArrayList<>();
+        for (Account account : accounts) {
+            if (account != null && account.getEmail() != null) {
+                emails.add(account.getEmail());
+            }
+        }
+        if (emails.isEmpty()) {
+            return;
+        }
+        List<SheeridLink> links = sheeridLinkRepository.findAllByEmailIn(emails);
+        Map<String, String> map = new HashMap<>();
+        for (SheeridLink link : links) {
+            if (link != null && link.getEmail() != null) {
+                map.put(link.getEmail(), link.getSheeridUrl());
+            }
+        }
+        for (Account account : accounts) {
+            if (account != null && account.getEmail() != null) {
+                account.setSheeridUrl(map.get(account.getEmail()));
+            }
+        }
     }
 
     public record ImportResult(int added, int updated, int skipped) {

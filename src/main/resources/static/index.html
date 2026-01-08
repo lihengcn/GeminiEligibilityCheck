@@ -305,8 +305,12 @@
 
       table { width: 100%; border-collapse: collapse; font-size: 13px; }
       thead { position: sticky; top: 0; background: var(--card); z-index: 10; box-shadow: 0 1px 0 var(--line); }
-      th { text-align: left; padding: 12px 10px; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
-      td { padding: 12px 10px; border-bottom: 1px solid var(--line); color: var(--ink); vertical-align: middle; }
+      th { text-align: left; padding: 8px 6px; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
+      td { padding: 8px 6px; border-bottom: 1px solid var(--line); color: var(--ink); vertical-align: middle; }
+      th.col-email, td.col-email { width: 160px; }
+      th.col-recovery, td.col-recovery { width: 160px; }
+      th.col-password, td.col-password { width: 120px; }
+      th.col-token, td.col-token { width: 200px; }
       tr:hover td { background: var(--bg); }
       tr.row-editing td { background: var(--highlight); }
 
@@ -546,10 +550,10 @@
                   <th style="width: 40px; text-align: center;">
                     <input id="selectAll" type="checkbox" title="Select all" />
                   </th>
-                  <th data-i18n="th_email">账号</th>
-                  <th data-i18n="th_password">密码</th>
-                  <th data-i18n="th_recovery_email">辅助邮箱</th>
-                  <th data-i18n="th_2fa">2FA 密钥</th>
+                  <th class="col-email" data-i18n="th_email">账号</th>
+                  <th class="col-password" data-i18n="th_password">密码</th>
+                  <th class="col-recovery" data-i18n="th_recovery_email">辅助邮箱</th>
+                  <th class="col-token" data-i18n="th_2fa">2FA 密钥</th>
                   <th data-i18n="th_status">状态</th>
                   <th data-i18n="th_sold">出售</th>
                   <th data-i18n="th_actions" style="text-align: right;">操作</th>
@@ -675,7 +679,7 @@
           status_title: "账号状态",
           th_email: "账号",
           th_password: "密码",
-          th_recovery_email: "辅助邮箱",
+          th_recovery_email: "恢复邮箱",
           th_2fa: "2FA 密钥",
           th_sheerid: "认证链接",
           th_verify_status: "验证状态",
@@ -1270,10 +1274,10 @@
                     selectedEmails.has(account.email) ? "checked" : ""
                   } />
                 </td>
-                <td>${account.email}</td>
-                <td><input class="edit-password" type="text" value="${(account.password || "").replaceAll('"', "&quot;")}" /></td>
-                <td>${account.recoveryEmail || ""}</td>
-                <td><input class="edit-2fa" type="text" value="${(account.authenticatorToken || "").replaceAll('"', "&quot;")}" /></td>
+                <td class="col-email">${account.email}</td>
+                <td class="col-password"><input class="edit-password" type="text" value="${(account.password || "").replaceAll('"', "&quot;")}" /></td>
+                <td class="col-recovery">${account.recoveryEmail || ""}</td>
+                <td class="col-token"><input class="edit-2fa" type="text" value="${(account.authenticatorToken || "").replaceAll('"', "&quot;")}" /></td>
                 <td>
                   <select class="edit-status">
                     ${["IDLE", "CHECKING", "QUALIFIED", "INVALID", "PRODUCT"]
@@ -1300,10 +1304,10 @@
                     selectedEmails.has(account.email) ? "checked" : ""
                   } />
                 </td>
-                <td class="copyable" data-copy-type="email" title="Copy">${account.email}</td>
-                <td class="copyable" data-copy-type="password" title="Copy">${account.password || ""}</td>
-                <td class="copyable" data-copy-type="recovery" title="Copy">${account.recoveryEmail || ""}</td>
-                <td class="copyable" data-copy-type="token" title="Copy" style="font-family:'JetBrains Mono'; font-size:12px;">${account.authenticatorToken || ""}</td>
+                <td class="copyable col-email" data-copy-type="email" title="Copy">${account.email}</td>
+                <td class="copyable col-password" data-copy-type="password" title="Copy">${account.password || ""}</td>
+                <td class="copyable col-recovery" data-copy-type="recovery" title="Copy">${account.recoveryEmail || ""}</td>
+                <td class="copyable col-token" data-copy-type="token" title="Copy" style="font-family:'JetBrains Mono'; font-size:12px;">${account.authenticatorToken || ""}</td>
                 <td class="status-cell" data-email="${account.email}"><span class="${statusChipClass(account)}">${statusLabel(account)}</span></td>
                 <td>
                    <input type="checkbox" class="sold-toggle" data-email="${account.email}" ${account.sold ? "checked" : ""} />

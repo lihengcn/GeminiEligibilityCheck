@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/gem}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:123456}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+onekey:
+  apiKey: ${ONEKEY_API_KEY:123456}
+
+# Allow OVERWRITE import mode (dangerous).
+gemini:
+  pg:
+    allowOverwrite: false

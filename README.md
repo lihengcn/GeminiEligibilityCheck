@@ -18,13 +18,10 @@ java -jar target/GeminiEligibilityCheck-0.0.1-SNAPSHOT.jar
 docker build -t gemini-check .
 
 # 运行（数据持久化到 /path/to/data）
-docker run -d -p 8080:8080 -v /path/to/data:/data gemini-check
-
-# 使用 PostgreSQL
 docker run -d -p 8080:8080 \
-  -e gemini.pg.url=jdbc:postgresql://host:5432/gem \
-  -e gemini.pg.user=postgres \
-  -e gemini.pg.password=secret \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host:5432/gem \
+  -e SPRING_DATASOURCE_USERNAME=postgres \
+  -e SPRING_DATASOURCE_PASSWORD=secret \
   gemini-check
 ```
 
@@ -32,16 +29,14 @@ docker run -d -p 8080:8080 \
 
 ## 存储配置
 
-默认使用本地 JSON 文件（`/data/accounts-state.json`），可通过 `gemini.storage.path` 修改路径。
-
-### PostgreSQL（可选）
+项目使用 Spring Boot JPA 直接操作 PostgreSQL（必选）。
 
 | 配置项 | 说明 |
 |--------|------|
-| `gemini.pg.url` | 数据库连接，如 `jdbc:postgresql://127.0.0.1:5432/gem` |
-| `gemini.pg.user` | 用户名 |
-| `gemini.pg.password` | 密码 |
-| `gemini.pg.migrateFromFile` | 设为 `true` 时，启动时将本地 JSON 迁移到数据库（仅数据库为空时执行） |
+| `spring.datasource.url` | 数据库连接，如 `jdbc:postgresql://127.0.0.1:5432/gem` |
+| `spring.datasource.username` | 用户名 |
+| `spring.datasource.password` | 密码 |
+| `gemini.pg.allowOverwrite` | 是否允许导入模式 `OVERWRITE` |
 
 ## API
 
