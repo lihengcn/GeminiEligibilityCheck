@@ -134,9 +134,6 @@ public class SheeridVerifyService {
         if (request.getHCaptchaToken() != null && !request.getHCaptchaToken().isBlank()) {
             return request.getHCaptchaToken().trim();
         }
-        if (request.getApiKey() != null && !request.getApiKey().isBlank()) {
-            return request.getApiKey().trim();
-        }
         if (onekeyApiKey != null) {
             return onekeyApiKey.trim();
         }

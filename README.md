@@ -36,7 +36,6 @@ docker run -d -p 8080:8080 \
 | `spring.datasource.url` | 数据库连接，如 `jdbc:postgresql://127.0.0.1:5432/gem` |
 | `spring.datasource.username` | 用户名 |
 | `spring.datasource.password` | 密码 |
-| `gemini.pg.allowOverwrite` | 是否允许导入模式 `OVERWRITE` |
 
 ## API
 
@@ -53,7 +52,7 @@ docker run -d -p 8080:8080 \
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/accounts` | 获取所有账号及状态统计 |
-| POST | `/api/import` | 批量导入账号 `{"content":"email1\nemail2","mode":"APPEND\|OVERWRITE"}` |
+| POST | `/api/import` | 批量导入账号 `{"content":"email1\nemail2"}` |
 | POST | `/api/status` | 手动更新状态 `{"email":"...","status":"IDLE\|CHECKING\|QUALIFIED\|INVALID"}` |
 | POST | `/api/sheerid` | 更新 SheerID 认证链接 `{"email":"...","sheeridUrl":"https://..."}` |
 | POST | `/api/sold` | 标记已售 `{"email":"...","sold":true}` |

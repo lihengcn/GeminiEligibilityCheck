@@ -396,21 +396,6 @@
               <div id="templateHint" style="font-size: 11px; color: var(--ink-soft);"></div>
             </div>
             
-            <div class="field">
-              <label data-i18n="mode_label">导入模式</label>
-              <div class="radio-group">
-                <label>
-                  <input type="radio" name="mode" value="OVERWRITE" checked />
-                  <span data-i18n="mode_overwrite">覆盖 (清空后导入)</span>
-                </label>
-                <label>
-                  <input type="radio" name="mode" value="APPEND" />
-                  <span data-i18n="mode_append">追加 (保留并添加)</span>
-                </label>
-              </div>
-              <div id="modeHint" style="font-size: 11px; color: var(--ink-soft);"></div>
-            </div>
-            
             <button id="importBtn" style="width: 100%;">
               <span data-i18n="import_btn">开始导入</span>
             </button>
@@ -451,15 +436,6 @@
             OneKey Batch
           </h3>
           <div class="field">
-            <label for="onekeyApiKey" style="font-size:11px;">
-              <span data-i18n="onekey_apikey_label">API Key (可选，绕过验证码)</span>
-            </label>
-            <input
-              id="onekeyApiKey"
-              type="password"
-              placeholder="hCaptcha API Key"
-              style="font-size:12px;"
-            />
             <textarea
               id="onekeyIds"
               rows="3"
@@ -599,7 +575,6 @@
       const fileHintEl = document.getElementById("fileHint");
       const templateSelect = document.getElementById("importTemplate");
       const templateHintEl = document.getElementById("templateHint");
-      const modeHintEl = document.getElementById("modeHint");
       const importBtn = document.getElementById("importBtn");
       const applyRefreshBtn = document.getElementById("applyRefresh");
       const manualRefreshBtn = document.getElementById("manualRefresh");
@@ -643,10 +618,6 @@
           template_hint_auto: "自动识别：3列且第3列像邮箱时视为恢复邮箱，否则视为 2FA 密钥。",
           template_hint_token: "模板：账号;密码;2FA 密钥（可追加 4-6 列）。",
           template_hint_recovery: "模板：账号;密码;恢复邮箱。",
-          mode_label: "导入模式",
-          mode_overwrite: "覆盖 (清空后导入)",
-          mode_append: "追加 (保留并添加)",
-          mode_overwrite_disabled: "PostgreSQL 模式下已禁用覆盖功能。",
           import_btn: "开始导入",
           cat_all: "全部",
           cat_qualified: "资质号",
@@ -656,7 +627,6 @@
           onekey_title: "OneKey 批量验证",
           onekey_btn: "批量验证",
           onekey_useLucky: "Lucky",
-          onekey_apikey_label: "API Key (可选，绕过验证码)",
           msg_onekey_too_many: "最多支持 5 个 verificationId",
           msg_onekey_missing: "请填写 verificationId (每行一个)",
           msg_onekey_running: "请求中...",
@@ -769,10 +739,6 @@
           template_hint_auto: "Auto: if 3 columns and column 3 looks like email -> recovery email, else 2FA token.",
           template_hint_token: "Template: account;password;2FA token (optional columns 4-6).",
           template_hint_recovery: "Template: account;password;recovery email.",
-          mode_label: "Import Mode",
-          mode_overwrite: "Overwrite (Clear & Import)",
-          mode_append: "Append (Keep & Add)",
-          mode_overwrite_disabled: "PostgreSQL active: overwrite disabled.",
           import_btn: "Start Import",
           cat_all: "All",
           cat_qualified: "Qualified",
@@ -782,7 +748,6 @@
           onekey_title: "OneKey Batch",
           onekey_btn: "Batch Verify",
           onekey_useLucky: "Lucky",
-          onekey_apikey_label: "API Key (optional, bypass captcha)",
           msg_onekey_too_many: "Max 5 IDs",
           msg_onekey_missing: "Enter IDs first",
           msg_onekey_running: "Processing...",
@@ -938,11 +903,11 @@
         renderActiveView();
       }
 
-      async function fetchCheckToken(verificationIds, apiKey, useLucky, programId) {
+      async function fetchCheckToken(verificationIds, useLucky, programId) {
         const resp = await fetch("/api/sheerid-verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ verificationIds, hCaptchaToken: apiKey, useLucky, programId })
+          body: JSON.stringify({ verificationIds, useLucky, programId })
         });
         if (!resp.ok) throw new Error("Request failed: " + resp.status);
         const data = await resp.json();
@@ -973,11 +938,10 @@
       }
 
       async function verifySheeridStatus(verificationIds, onResult) {
-        const apiKey = localStorage.getItem("onekey_api_key") || "";
         const programId = "";
         const useLucky = false;
 
-        const checkToken = await fetchCheckToken(verificationIds, apiKey, useLucky, programId);
+        const checkToken = await fetchCheckToken(verificationIds, useLucky, programId);
         if (!checkToken) throw new Error("No checkToken returned");
 
         const maxTries = 20;
@@ -1473,7 +1437,7 @@
               const resp = await fetch("/api/import", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mode: "APPEND", content, template: "TOKEN" }),
+                body: JSON.stringify({ content, template: "TOKEN" }),
               });
               if (!resp.ok) throw new Error("save failed");
               if (status) await fetch("/api/status", {
@@ -1551,28 +1515,6 @@
         templateHintEl.textContent = t.template_hint_auto;
       }
 
-      async function syncImportModeCapabilities() {
-        if (!modeHintEl) return;
-        modeHintEl.textContent = "";
-        try {
-          const resp = await fetch("/api/info");
-          if (!resp.ok) return;
-          const info = await resp.json();
-          const storage = info && info.storage ? String(info.storage) : "";
-          const allowOverwrite = !!(info && info.pgAllowOverwrite);
-          const overwriteRadio = document.querySelector('input[name="mode"][value="OVERWRITE"]');
-          if (!overwriteRadio) return;
-          if (storage === "postgres" && !allowOverwrite) {
-            overwriteRadio.disabled = true;
-            if (overwriteRadio.checked) {
-              const appendRadio = document.querySelector('input[name="mode"][value="APPEND"]');
-              if (appendRadio) appendRadio.checked = true;
-            }
-            modeHintEl.textContent = i18n[currentLang].mode_overwrite_disabled;
-          }
-        } catch {}
-      }
-
       importBtn.addEventListener("click", async () => {
         const files = Array.from(fileInput.files || []);
         if (files.length === 0) {
@@ -1581,17 +1523,15 @@
         }
         importBtn.disabled = true;
         try {
-          const selectedMode = document.querySelector("input[name='mode']:checked").value;
           const selectedTemplate = templateSelect ? templateSelect.value : "AUTO";
           let totalAdded = 0, totalUpdated = 0, totalSkipped = 0;
           for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const content = await file.text();
-            const mode = i === 0 ? selectedMode : selectedMode === "OVERWRITE" ? "APPEND" : selectedMode;
             const response = await fetch("/api/import", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ mode, content, template: selectedTemplate }),
+              body: JSON.stringify({ content, template: selectedTemplate }),
             });
             if (!response.ok) throw new Error(`导入失败: ${file.name}`);
             const result = await response.json();
@@ -1763,7 +1703,7 @@
           const key = node.getAttribute("data-i18n");
           if (i18n[currentLang][key]) node.textContent = i18n[currentLang][key];
         });
-        updateFileHint(); updateTemplateHint(); syncImportModeCapabilities(); syncCategoryBar();
+        updateFileHint(); updateTemplateHint(); syncCategoryBar();
         renderSummary({}, 0); fetchAccounts(); setStatusView(getCurrentStatusView(), false);
       }
 
@@ -1806,15 +1746,6 @@
       const onekeyProgramIdEl = document.getElementById("onekeyProgramId");
       const onekeyUseLuckyEl = document.getElementById("onekeyUseLucky");
       const onekeyResultEl = document.getElementById("onekeyResult");
-      const onekeyApiKeyEl = document.getElementById("onekeyApiKey");
-      
-      // 加载保存的 API Key
-      if (onekeyApiKeyEl) {
-        onekeyApiKeyEl.value = localStorage.getItem("onekey_api_key") || "";
-        onekeyApiKeyEl.addEventListener("change", () => {
-          localStorage.setItem("onekey_api_key", onekeyApiKeyEl.value.trim());
-        });
-      }
       
       if (onekeyBatchBtn) {
         onekeyBatchBtn.addEventListener("click", async () => {
@@ -1834,13 +1765,12 @@
           
           const programId = (onekeyProgramIdEl.value || "").trim();
           const useLucky = onekeyUseLuckyEl.checked;
-          const apiKey = (onekeyApiKeyEl ? onekeyApiKeyEl.value.trim() : "") || localStorage.getItem("onekey_api_key") || "";
           
           onekeyResultEl.textContent = t.msg_onekey_running;
           onekeyBatchBtn.disabled = true;
           
           try {
-            const checkToken = await fetchCheckToken(ids, apiKey, useLucky, programId);
+            const checkToken = await fetchCheckToken(ids, useLucky, programId);
             if (!checkToken) {
               onekeyResultEl.textContent = "No checkToken returned";
               onekeyBatchBtn.disabled = false;

@@ -6,10 +6,6 @@ import java.util.List;
 @Data
 public class SheeridVerifyRequest {
     private List<String> verificationIds;
-    /**
-     * hCaptchaToken / API Key
-     */
-    private String apiKey;
     private String hCaptchaToken;
     private boolean useLucky;
     private String programId;

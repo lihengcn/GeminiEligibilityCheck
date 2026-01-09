@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,18 +23,14 @@ public class AccountStorage {
     private final AccountRepository accountRepository;
     private final SheeridLinkRepository sheeridLinkRepository;
     private final EntityManager entityManager;
-    private final boolean pgAllowOverwrite;
-
     public AccountStorage(
             AccountRepository accountRepository,
             SheeridLinkRepository sheeridLinkRepository,
-            EntityManager entityManager,
-            @Value("${gemini.pg.allowOverwrite:false}") boolean pgAllowOverwrite
+            EntityManager entityManager
     ) {
         this.accountRepository = accountRepository;
         this.sheeridLinkRepository = sheeridLinkRepository;
         this.entityManager = entityManager;
-        this.pgAllowOverwrite = pgAllowOverwrite;
     }
 
     private static boolean looksLikeHeaderEmail(String email) {
@@ -124,22 +119,11 @@ public class AccountStorage {
         return parsed;
     }
 
-    public ImportResult importFromText(String content, ImportMode mode) {
-        return importFromText(content, mode, ImportTemplate.AUTO);
-    }
-
     @Transactional
-    public ImportResult importFromText(String content, ImportMode mode, ImportTemplate template) {
-        if (mode == ImportMode.OVERWRITE && !pgAllowOverwrite) {
-            mode = ImportMode.APPEND;
-        }
+    public ImportResult importFromText(String content, ImportTemplate template) {
         int added = 0;
         int updated = 0;
         int skipped = 0;
-        if (mode == ImportMode.OVERWRITE) {
-            sheeridLinkRepository.deleteAll();
-            accountRepository.deleteAll();
-        }
         String[] lines = content.split("\\r?\\n");
         for (String rawLine : lines) {
             if (rawLine == null) {
@@ -156,7 +140,7 @@ public class AccountStorage {
                 continue;
             }
             try {
-                if (importSingleLine(parsed, mode)) {
+                if (importSingleLine(parsed)) {
                     added++;
                 } else {
                     updated++;
@@ -169,10 +153,10 @@ public class AccountStorage {
         return new ImportResult(added, updated, skipped);
     }
 
-    private boolean importSingleLine(ParsedImportLine parsed, ImportMode mode) {
+    private boolean importSingleLine(ParsedImportLine parsed) {
         String email = parsed.email;
         Account existing = accountRepository.findById(email).orElse(null);
-        if (existing != null && mode == ImportMode.APPEND) {
+        if (existing != null) {
             applyImportUpdate(existing, parsed);
             accountRepository.save(existing);
             return false;
@@ -361,10 +345,6 @@ public class AccountStorage {
         return true;
     }
 
-    public boolean isPgAllowOverwrite() {
-        return pgAllowOverwrite;
-    }
-
     private void attachSheerid(Account account) {
         if (account == null || account.getEmail() == null) {
             return;
@@ -401,11 +381,6 @@ public class AccountStorage {
     }
 
     public record ImportResult(int added, int updated, int skipped) {
-    }
-
-    public enum ImportMode {
-        OVERWRITE,
-        APPEND
     }
 
     public enum ImportTemplate {

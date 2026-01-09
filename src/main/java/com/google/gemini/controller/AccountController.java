@@ -21,7 +21,6 @@ import com.google.gemini.entity.AccountStatus;
 import com.google.gemini.service.SheeridVerifyService;
 import com.google.gemini.service.TotpService;
 import com.google.gemini.storage.AccountStorage;
-import com.google.gemini.storage.AccountStorage.ImportMode;
 import com.google.gemini.storage.AccountStorage.ImportResult;
 import com.google.gemini.storage.AccountStorage.ImportTemplate;
 import org.springframework.http.HttpStatus;
@@ -138,14 +137,7 @@ public class AccountController {
 
     @PostMapping("/import")
     public ResponseEntity<ImportResponse> importAccounts(@RequestBody ImportRequest request) {
-        if (request == null || request.getContent() == null || request.getContent().isBlank()
-                || request.getMode() == null || request.getMode().isBlank()) {
-            return ResponseEntity.badRequest().build();
-        }
-        ImportMode mode;
-        try {
-            mode = ImportMode.valueOf(request.getMode().trim().toUpperCase());
-        } catch (Exception ex) {
+        if (request == null || request.getContent() == null || request.getContent().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
         ImportTemplate template = ImportTemplate.AUTO;
@@ -156,7 +148,7 @@ public class AccountController {
                 template = ImportTemplate.AUTO;
             }
         }
-        ImportResult result = accountStorage.importFromText(request.getContent(), mode, template);
+        ImportResult result = accountStorage.importFromText(request.getContent(), template);
         return ResponseEntity.ok(new ImportResponse(result.added(), result.updated(), result.skipped()));
     }
 
@@ -168,7 +160,7 @@ public class AccountController {
     @GetMapping("/info")
     public ResponseEntity<StorageInfoResponse> info() {
         String storage = accountStorage.isPostgresEnabled() ? "postgres" : "file";
-        return ResponseEntity.ok(new StorageInfoResponse(storage, accountStorage.isPgAllowOverwrite()));
+        return ResponseEntity.ok(new StorageInfoResponse(storage));
     }
 
     @PostMapping("/sold")
