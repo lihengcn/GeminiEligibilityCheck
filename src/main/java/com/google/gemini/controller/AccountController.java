@@ -278,4 +278,53 @@ public class AccountController {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body("{\"error\":\"upstream failed\"}");
         }
     }
+
+    @GetMapping("/onekey-status")
+    public ResponseEntity<String> onekeyStatus() {
+        try {
+            // 先获取 CSRF token
+            URL pageUrl = new URL("https://batch.1key.me/");
+            HttpURLConnection pageConn = (HttpURLConnection) pageUrl.openConnection();
+            pageConn.setRequestMethod("GET");
+            pageConn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            
+            StringBuilder pageContent = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(pageConn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    pageContent.append(line);
+                }
+            }
+            
+            String csrfToken = "";
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("window\\.CSRF_TOKEN\\s*=\\s*\"([^\"]+)\"").matcher(pageContent.toString());
+            if (matcher.find()) {
+                csrfToken = matcher.group(1);
+            }
+
+            // 调用 status API
+            URL apiUrl = new URL("https://batch.1key.me/api/status");
+            HttpURLConnection conn = (HttpURLConnection) apiUrl.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("X-CSRF-Token", csrfToken);
+            conn.setRequestProperty("Origin", "https://batch.1key.me");
+            conn.setRequestProperty("Referer", "https://batch.1key.me/");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            
+            StringBuilder response = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+            }
+            
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(response.toString());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("{\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}");
+        }
+    }
 }
