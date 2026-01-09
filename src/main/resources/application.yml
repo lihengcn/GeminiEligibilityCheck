@@ -11,3 +11,19 @@ spring:
 
 onekey:
   apiKey: ${ONEKEY_API_KEY:123456}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: sqlite
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:sqlite:./data/gem.db}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    open-in-view: false

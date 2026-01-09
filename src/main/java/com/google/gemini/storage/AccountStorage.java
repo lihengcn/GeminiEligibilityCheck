@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,14 +25,17 @@ public class AccountStorage {
     private final AccountRepository accountRepository;
     private final SheeridLinkRepository sheeridLinkRepository;
     private final EntityManager entityManager;
+    private final boolean postgresEnabled;
     public AccountStorage(
             AccountRepository accountRepository,
             SheeridLinkRepository sheeridLinkRepository,
-            EntityManager entityManager
+            EntityManager entityManager,
+            @Value("${spring.datasource.url:}") String datasourceUrl
     ) {
         this.accountRepository = accountRepository;
         this.sheeridLinkRepository = sheeridLinkRepository;
         this.entityManager = entityManager;
+        this.postgresEnabled = datasourceUrl != null && datasourceUrl.startsWith("jdbc:postgresql:");
     }
 
     private static boolean looksLikeHeaderEmail(String email) {
@@ -205,14 +209,22 @@ public class AccountStorage {
     }
 
     private String pollAccountEmail() {
-        String sql = """
-                SELECT email
-                FROM gem_accounts
-                WHERE sold = FALSE AND status = 'IDLE'
-                ORDER BY email
-                LIMIT 1
-                FOR UPDATE SKIP LOCKED
-                """;
+        String sql = postgresEnabled
+                ? """
+                    SELECT email
+                    FROM gem_accounts
+                    WHERE sold = FALSE AND status = 'IDLE'
+                    ORDER BY email
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                    """
+                : """
+                    SELECT email
+                    FROM gem_accounts
+                    WHERE sold = 0 AND status = 'IDLE'
+                    ORDER BY email
+                    LIMIT 1
+                    """;
         @SuppressWarnings("unchecked")
         List<Object> result = entityManager.createNativeQuery(sql).getResultList();
         if (result.isEmpty()) {
@@ -394,7 +406,7 @@ public class AccountStorage {
     }
 
     public boolean isPostgresEnabled() {
-        return true;
+        return postgresEnabled;
     }
 
     private void attachSheerid(Account account) {

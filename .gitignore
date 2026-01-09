@@ -8,3 +8,5 @@ server.*.log
 *.log
 services/*.exe
 scripts/
+*.jar
+*.db

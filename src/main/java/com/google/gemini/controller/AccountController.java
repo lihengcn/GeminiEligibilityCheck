@@ -167,7 +167,7 @@ public class AccountController {
 
     @GetMapping("/info")
     public ResponseEntity<StorageInfoResponse> info() {
-        String storage = accountStorage.isPostgresEnabled() ? "postgres" : "file";
+        String storage = accountStorage.isPostgresEnabled() ? "postgres" : "sqlite";
         return ResponseEntity.ok(new StorageInfoResponse(storage));
     }
 
