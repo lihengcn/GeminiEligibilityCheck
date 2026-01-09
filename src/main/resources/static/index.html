@@ -938,43 +938,54 @@
         renderActiveView();
       }
 
-      // SheerID SSE 验证函数
-      async function verifySheeridSSE(verificationIds, onResult) {
-        const apiKey = localStorage.getItem("onekey_api_key") || "";
-        const programId = "";
-        const useLucky = false;
-        
-        // 通过后端代理调用，避免 CORS 问题
+      async function fetchCheckToken(verificationIds, apiKey, useLucky, programId) {
         const resp = await fetch("/api/sheerid-verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ verificationIds, hCaptchaToken: apiKey, useLucky, programId })
         });
-        
         if (!resp.ok) throw new Error("Request failed: " + resp.status);
-        
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          console.log("SSE chunk:", chunk); // 调试
-          const lines = chunk.split("\n");
-          for (const line of lines) {
-            if (line.startsWith("data:")) {
-              const rawData = line.slice(5).trim();
-              console.log("SSE data:", rawData); // 调试
-              try {
-                const data = JSON.parse(rawData);
-                if (onResult) onResult(data);
-              } catch (e) {
-                // 如果不是 JSON，直接显示原始数据
-                if (onResult && rawData) onResult({ message: rawData });
-              }
-            }
-          }
+        const data = await resp.json();
+        return data && data.checkToken ? data.checkToken : "";
+      }
+
+      async function fetchCheckStatus(checkToken) {
+        const resp = await fetch("/api/check-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ checkToken })
+        });
+        if (!resp.ok) throw new Error("Request failed: " + resp.status);
+        const text = await resp.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { message: text };
+        }
+      }
+
+      function isCheckDone(data) {
+        if (!data || typeof data !== "object") return true;
+        const status = String(data.status || data.state || "").toLowerCase();
+        if (["running", "pending", "processing", "queued"].includes(status)) return false;
+        if (data.completed === false || data.done === false) return false;
+        return true;
+      }
+
+      async function verifySheeridStatus(verificationIds, onResult) {
+        const apiKey = localStorage.getItem("onekey_api_key") || "";
+        const programId = "";
+        const useLucky = false;
+
+        const checkToken = await fetchCheckToken(verificationIds, apiKey, useLucky, programId);
+        if (!checkToken) throw new Error("No checkToken returned");
+
+        const maxTries = 20;
+        for (let i = 0; i < maxTries; i++) {
+          const data = await fetchCheckStatus(checkToken);
+          if (onResult) onResult(data);
+          if (isCheckDone(data)) break;
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       }
 
@@ -1209,20 +1220,10 @@
             btn.disabled = true;
             
             try {
-              await verifySheeridSSE([verifyId], (result) => {
+              await verifySheeridStatus([verifyId], (result) => {
                 if (statusCell) {
-                  // 开始事件，显示等待中
-                  if (result.total !== undefined && !result.verificationId) {
-                    statusCell.textContent = "等待结果中...";
-                    statusCell.style.color = "var(--ink-soft)";
-                    return;
-                  }
-                  // 进度事件，继续等待
-                  if (result.completed !== undefined && !result.verificationId) {
-                    return;
-                  }
                   // 结果事件，显示最终结果
-                  if (result.verificationId === verifyId || result.message || result.currentStep) {
+                  if (result) {
                     const msg = result.message || result.currentStep || result.status || JSON.stringify(result);
                     statusCell.textContent = msg;
                     statusCell.style.color = (result.currentStep === "success" || result.status === "success") 
@@ -1839,56 +1840,26 @@
           onekeyBatchBtn.disabled = true;
           
           try {
-            // 先获取 CSRF token
-            const pageResp = await fetch("https://batch.1key.me/", { mode: "cors", credentials: "omit" });
-            const pageHtml = await pageResp.text();
-            const csrfMatch = pageHtml.match(/window\.CSRF_TOKEN\s*=\s*"([^"]+)"/);
-            const csrfToken = csrfMatch ? csrfMatch[1] : "";
-            
-            if (!csrfToken) {
-              onekeyResultEl.textContent = "Failed to get CSRF token";
+            const checkToken = await fetchCheckToken(ids, apiKey, useLucky, programId);
+            if (!checkToken) {
+              onekeyResultEl.textContent = "No checkToken returned";
               onekeyBatchBtn.disabled = false;
               return;
             }
-            
-            // SSE 请求
-            const resp = await fetch("https://batch.1key.me/api/batch", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-CSRF-Token": csrfToken,
-              },
-              body: JSON.stringify({
-                verificationIds: ids,
-                hCaptchaToken: apiKey,
-                useLucky: useLucky,
-                programId: programId
-              })
-            });
-            
-            if (!resp.ok) throw new Error("Request failed");
-            
-            // 解析 SSE 响应
-            const reader = resp.body.getReader();
-            const decoder = new TextDecoder();
+
             let result = "";
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              const chunk = decoder.decode(value, { stream: true });
-              const lines = chunk.split("\n");
-              for (const line of lines) {
-                if (line.startsWith("data:")) {
-                  const data = line.slice(5).trim();
-                  if (data) {
-                    result += data + "\n";
-                    onekeyResultEl.textContent = result;
-                  }
-                }
+            const maxTries = 20;
+            for (let i = 0; i < maxTries; i++) {
+              const data = await fetchCheckStatus(checkToken);
+              const line = typeof data === "string" ? data : JSON.stringify(data);
+              if (line && line !== "{}") {
+                result += line + "\n";
+                onekeyResultEl.textContent = result;
               }
+              if (isCheckDone(data)) break;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
             }
-            
+
             if (!result) onekeyResultEl.textContent = "No response";
           } catch (e) {
             onekeyResultEl.textContent = t.msg_onekey_fail + ": " + e.message;

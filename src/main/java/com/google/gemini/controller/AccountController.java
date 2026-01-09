@@ -1,6 +1,8 @@
 package com.google.gemini.controller;
 
 import com.google.gemini.dto.CallbackRequest;
+import com.google.gemini.dto.CheckStatusRequest;
+import com.google.gemini.dto.CheckTokenResponse;
 import com.google.gemini.dto.ImportRequest;
 import com.google.gemini.dto.ImportResponse;
 import com.google.gemini.dto.RestoreStatusesRequest;
@@ -30,7 +32,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api")
@@ -254,20 +255,35 @@ public class AccountController {
         return ResponseEntity.ok("updated:" + updated + ",skipped:" + skipped);
     }
 
-    @PostMapping(value = "/sheerid-verify", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<SseEmitter> sheeridVerify(@RequestBody SheeridVerifyRequest request) {
+    @PostMapping(value = "/sheerid-verify", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<CheckTokenResponse> sheeridVerify(@RequestBody SheeridVerifyRequest request) {
         if (request == null || request.getVerificationIds() == null || request.getVerificationIds().isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
         if (request.getVerificationIds().size() > 5) {
             return ResponseEntity.badRequest().build();
         }
+        try {
+            String checkToken = sheeridVerifyService.createCheckToken(request);
+            if (checkToken == null || checkToken.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
+            }
+            return ResponseEntity.ok(new CheckTokenResponse(checkToken));
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
+        }
+    }
 
-        SseEmitter emitter = new SseEmitter(0L);
-        sheeridVerifyService.verify(emitter, request);
-
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .body(emitter);
+    @PostMapping(value = "/check-status", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> checkStatus(@RequestBody CheckStatusRequest request) {
+        if (request == null || request.getCheckToken() == null || request.getCheckToken().isBlank()) {
+            return ResponseEntity.badRequest().body("{\"error\":\"checkToken required\"}");
+        }
+        try {
+            String result = sheeridVerifyService.checkStatus(request.getCheckToken().trim());
+            return ResponseEntity.ok(result);
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body("{\"error\":\"upstream failed\"}");
+        }
     }
 }
