@@ -39,21 +39,6 @@ public class Account {
     @Column(name = "authenticator_token")
     private String authenticatorToken;
     /**
-     * 应用密码
-     */
-    @Column(name = "app_password")
-    private String appPassword;
-    /**
-     * 2FA 管理地址
-     */
-    @Column(name = "authenticator_url")
-    private String authenticatorUrl;
-    /**
-     * 消息回调地址
-     */
-    @Column(name = "messages_url")
-    private String messagesUrl;
-    /**
      * SheerID 认证链接（单独表/可选）
      */
     @Transient

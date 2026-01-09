@@ -9,6 +9,7 @@ import com.google.gemini.dto.RestoreStatusesRequest;
 import com.google.gemini.dto.StatusView;
 import com.google.gemini.dto.TotpRequest;
 import com.google.gemini.dto.TotpResponse;
+import com.google.gemini.dto.DeleteAccountsRequest;
 import com.google.gemini.dto.DeleteAccountRequest;
 import com.google.gemini.dto.UpdateFinishedRequest;
 import com.google.gemini.dto.UpdateSoldRequest;
@@ -16,6 +17,7 @@ import com.google.gemini.dto.UpdateSheeridRequest;
 import com.google.gemini.dto.UpdateStatusRequest;
 import com.google.gemini.dto.StorageInfoResponse;
 import com.google.gemini.dto.SheeridVerifyRequest;
+import com.google.gemini.dto.UpdateAccountRequest;
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
 import com.google.gemini.service.SheeridVerifyService;
@@ -31,6 +33,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api")
@@ -199,6 +207,15 @@ public class AccountController {
         return ResponseEntity.ok("ok");
     }
 
+    @PostMapping("/delete-batch")
+    public ResponseEntity<String> deleteAccounts(@RequestBody DeleteAccountsRequest request) {
+        if (request == null || request.getEmails() == null || request.getEmails().isEmpty()) {
+            return ResponseEntity.badRequest().body("emails required");
+        }
+        int deleted = accountStorage.deleteAccounts(request.getEmails());
+        return ResponseEntity.ok("deleted:" + deleted);
+    }
+
     @PostMapping("/status")
     public ResponseEntity<String> updateStatusManual(@RequestBody UpdateStatusRequest request) {
         if (request == null || request.getEmail() == null || request.getEmail().isBlank()
@@ -214,6 +231,30 @@ public class AccountController {
         Account account = accountStorage.updateStatus(request.getEmail().trim(), status);
         if (account == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
+        }
+        return ResponseEntity.ok("ok");
+    }
+
+    @PostMapping("/update-account")
+    public ResponseEntity<String> updateAccount(@RequestBody UpdateAccountRequest request) {
+        if (request == null || request.getOriginalEmail() == null || request.getOriginalEmail().isBlank()
+                || request.getEmail() == null || request.getEmail().isBlank()) {
+            return ResponseEntity.badRequest().body("email/originalEmail required");
+        }
+        AccountStatus status = null;
+        if (request.getStatus() != null && !request.getStatus().isBlank()) {
+            try {
+                status = AccountStatus.valueOf(request.getStatus().trim().toUpperCase());
+            } catch (Exception ex) {
+                return ResponseEntity.badRequest().body("invalid status");
+            }
+        }
+        AccountStorage.UpdateResult result = accountStorage.updateAccount(request, status);
+        if (result == AccountStorage.UpdateResult.NOT_FOUND) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
+        }
+        if (result == AccountStorage.UpdateResult.EMAIL_CONFLICT) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body("email exists");
         }
         return ResponseEntity.ok("ok");
     }

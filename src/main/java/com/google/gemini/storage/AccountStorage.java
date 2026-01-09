@@ -3,6 +3,7 @@ package com.google.gemini.storage;
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
 import com.google.gemini.entity.SheeridLink;
+import com.google.gemini.dto.UpdateAccountRequest;
 import com.google.gemini.repository.AccountRepository;
 import com.google.gemini.repository.SheeridLinkRepository;
 import jakarta.persistence.EntityManager;
@@ -63,6 +64,16 @@ public class AccountStorage {
 
     private static ImportTemplate resolveTemplate(ImportTemplate template, String[] parts) {
         if (template == null || template == ImportTemplate.AUTO) {
+            if (parts.length >= 4) {
+                boolean thirdIsRecovery = looksLikeRecoveryEmail(parts[2]);
+                boolean fourthIsRecovery = looksLikeRecoveryEmail(parts[3]);
+                if (thirdIsRecovery && !fourthIsRecovery) {
+                    return ImportTemplate.RECOVERY_EMAIL;
+                }
+                if (fourthIsRecovery && !thirdIsRecovery) {
+                    return ImportTemplate.TOKEN;
+                }
+            }
             if (parts.length == 3 && looksLikeRecoveryEmail(parts[2])) {
                 return ImportTemplate.RECOVERY_EMAIL;
             }
@@ -76,15 +87,9 @@ public class AccountStorage {
         private String password;
         private String recoveryEmail;
         private String authenticatorToken;
-        private String appPassword;
-        private String authenticatorUrl;
-        private String messagesUrl;
         private boolean hasPassword;
         private boolean hasRecoveryEmail;
         private boolean hasAuthenticatorToken;
-        private boolean hasAppPassword;
-        private boolean hasAuthenticatorUrl;
-        private boolean hasMessagesUrl;
         private ImportTemplate templateUsed;
     }
 
@@ -106,16 +111,14 @@ public class AccountStorage {
         if (effectiveTemplate == ImportTemplate.RECOVERY_EMAIL) {
             parsed.recoveryEmail = parts.length > 2 ? parts[2] : "";
             parsed.hasRecoveryEmail = parts.length > 2;
+            parsed.authenticatorToken = parts.length > 3 ? parts[3] : "";
+            parsed.hasAuthenticatorToken = parts.length > 3 && !parsed.authenticatorToken.trim().isEmpty();
             return parsed;
         }
         parsed.authenticatorToken = parts.length > 2 ? parts[2] : "";
         parsed.hasAuthenticatorToken = parts.length > 2;
-        parsed.appPassword = parts.length > 3 ? parts[3] : "";
-        parsed.hasAppPassword = parts.length > 3;
-        parsed.authenticatorUrl = parts.length > 4 ? parts[4] : "";
-        parsed.hasAuthenticatorUrl = parts.length > 4;
-        parsed.messagesUrl = parts.length > 5 ? parts[5] : "";
-        parsed.hasMessagesUrl = parts.length > 5;
+        parsed.recoveryEmail = parts.length > 3 ? parts[3] : "";
+        parsed.hasRecoveryEmail = parts.length > 3 && !parsed.recoveryEmail.trim().isEmpty();
         return parsed;
     }
 
@@ -166,9 +169,6 @@ public class AccountStorage {
         account.setPassword(parsed.hasPassword ? parsed.password : "");
         account.setRecoveryEmail(parsed.hasRecoveryEmail ? parsed.recoveryEmail : "");
         account.setAuthenticatorToken(parsed.hasAuthenticatorToken ? parsed.authenticatorToken : "");
-        account.setAppPassword(parsed.hasAppPassword ? parsed.appPassword : "");
-        account.setAuthenticatorUrl(parsed.hasAuthenticatorUrl ? parsed.authenticatorUrl : "");
-        account.setMessagesUrl(parsed.hasMessagesUrl ? parsed.messagesUrl : "");
         account.setSold(false);
         account.setFinished(false);
         account.setStatus(AccountStatus.IDLE);
@@ -180,23 +180,11 @@ public class AccountStorage {
         if (parsed.hasPassword) {
             account.setPassword(parsed.password);
         }
-        if (parsed.templateUsed == ImportTemplate.RECOVERY_EMAIL) {
-            if (parsed.hasRecoveryEmail) {
-                account.setRecoveryEmail(parsed.recoveryEmail);
-            }
-            return;
+        if (parsed.hasRecoveryEmail) {
+            account.setRecoveryEmail(parsed.recoveryEmail);
         }
         if (parsed.hasAuthenticatorToken) {
             account.setAuthenticatorToken(parsed.authenticatorToken);
-        }
-        if (parsed.hasAppPassword) {
-            account.setAppPassword(parsed.appPassword);
-        }
-        if (parsed.hasAuthenticatorUrl) {
-            account.setAuthenticatorUrl(parsed.authenticatorUrl);
-        }
-        if (parsed.hasMessagesUrl) {
-            account.setMessagesUrl(parsed.messagesUrl);
         }
     }
 
@@ -312,6 +300,70 @@ public class AccountStorage {
         return true;
     }
 
+    @Transactional
+    public UpdateResult updateAccount(UpdateAccountRequest request, AccountStatus status) {
+        String originalEmail = request.getOriginalEmail() == null ? "" : request.getOriginalEmail().trim();
+        String newEmail = request.getEmail() == null ? "" : request.getEmail().trim();
+        if (originalEmail.isEmpty() || newEmail.isEmpty()) {
+            return UpdateResult.NOT_FOUND;
+        }
+        Account existing = accountRepository.findById(originalEmail).orElse(null);
+        if (existing == null) {
+            return UpdateResult.NOT_FOUND;
+        }
+        boolean emailChanged = !originalEmail.equals(newEmail);
+        if (emailChanged && accountRepository.existsById(newEmail)) {
+            return UpdateResult.EMAIL_CONFLICT;
+        }
+        Account target = emailChanged ? new Account() : existing;
+        target.setEmail(newEmail);
+        target.setPassword(request.getPassword() != null ? request.getPassword() : existing.getPassword());
+        target.setRecoveryEmail(request.getRecoveryEmail() != null ? request.getRecoveryEmail() : existing.getRecoveryEmail());
+        target.setAuthenticatorToken(request.getAuthenticatorToken() != null ? request.getAuthenticatorToken() : existing.getAuthenticatorToken());
+        target.setStatus(status != null ? status : existing.getStatus());
+        target.setSold(request.getSold() != null ? request.getSold() : existing.isSold());
+        target.setFinished(request.getFinished() != null ? request.getFinished() : existing.isFinished());
+        if (emailChanged) {
+            accountRepository.save(target);
+            accountRepository.delete(existing);
+            SheeridLink link = sheeridLinkRepository.findById(originalEmail).orElse(null);
+            if (link != null) {
+                sheeridLinkRepository.deleteById(originalEmail);
+                link.setEmail(newEmail);
+                sheeridLinkRepository.save(link);
+            }
+        } else {
+            accountRepository.save(target);
+        }
+        return UpdateResult.OK;
+    }
+
+    @Transactional
+    public int deleteAccounts(List<String> emails) {
+        if (emails == null || emails.isEmpty()) {
+            return 0;
+        }
+        List<String> normalized = new ArrayList<>();
+        for (String email : emails) {
+            if (email == null) {
+                continue;
+            }
+            String trimmed = email.trim();
+            if (!trimmed.isEmpty()) {
+                normalized.add(trimmed);
+            }
+        }
+        if (normalized.isEmpty()) {
+            return 0;
+        }
+        List<Account> existing = accountRepository.findAllById(normalized);
+        if (existing.isEmpty()) {
+            return 0;
+        }
+        accountRepository.deleteAll(existing);
+        return existing.size();
+    }
+
     @Transactional(readOnly = true)
     public List<Account> listAccounts() {
         List<Account> list = accountRepository.findAll(Sort.by(Sort.Direction.ASC, "email"));
@@ -381,6 +433,12 @@ public class AccountStorage {
     }
 
     public record ImportResult(int added, int updated, int skipped) {
+    }
+
+    public enum UpdateResult {
+        OK,
+        NOT_FOUND,
+        EMAIL_CONFLICT
     }
 
     public enum ImportTemplate {

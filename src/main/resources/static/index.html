@@ -10,6 +10,8 @@
     />
     <!-- 引入 OTPAuth 库用于生成验证码 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/otpauth/9.2.1/otpauth.umd.min.js"></script>
+    <!-- 引入 SheetJS 用于解析 Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
       :root {
         --bg: #f6f3ee;
@@ -87,6 +89,13 @@
         stroke-width: 2.5;
         margin-right: 4px;
         vertical-align: middle;
+      }
+
+      .col-token {
+        white-space: nowrap;
+        max-width: 160px;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       /* 滚动条美化 */
@@ -342,6 +351,42 @@
       }
 
       #message { margin-top: 10px; padding: 10px; border-radius: 8px; font-size: 12px; text-align: center; min-height: 20px; }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        backdrop-filter: blur(2px);
+      }
+
+      .modal[data-open="true"] {
+        display: flex;
+      }
+
+      .modal-card {
+        width: min(520px, calc(100vw - 32px));
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        padding: 18px;
+      }
+
+      .modal-card h3 {
+        margin: 0 0 12px 0;
+        font-size: 16px;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 12px;
+      }
       
       /* Theme Toggle Icon Specifics */
       #themeToggle svg { width: 18px; height: 18px; }
@@ -357,7 +402,7 @@
             <svg class="icon" style="width:28px;height:28px;color:var(--accent);" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
             <span data-i18n="title">Account Pulse</span>
           </h1>
-          <p class="subtitle" data-i18n="subtitle">导入账号 txt 文件，实时查看状态变化。</p>
+          <p class="subtitle" data-i18n="subtitle">导入账号 txt/Excel 文件，实时查看状态变化。</p>
         </div>
         <div class="lang-switch">
           <button id="langZh" class="secondary" data-lang="zh">中文</button>
@@ -380,9 +425,9 @@
           <div class="controls">
             <div class="field">
               <label for="file">
-                <span data-i18n="file_label">TXT 文件</span>
+                <span data-i18n="file_label">TXT / Excel 文件</span>
               </label>
-              <input id="file" type="file" accept=".txt" multiple />
+              <input id="file" type="file" accept=".txt,.xlsx,.xls" multiple />
               <div id="fileHint" style="font-size: 12px; color: var(--ink-soft); margin-top: 4px;"></div>
             </div>
 
@@ -390,8 +435,8 @@
               <label for="importTemplate" data-i18n="template_label">导入模板</label>
               <select id="importTemplate">
                 <option value="AUTO" data-i18n="template_auto">自动识别</option>
-                <option value="TOKEN" data-i18n="template_token">账号;密码;2FA 密钥</option>
-                <option value="RECOVERY_EMAIL" data-i18n="template_recovery">账号;密码;恢复邮箱</option>
+                <option value="TOKEN" data-i18n="template_token">账号;密码;2FA 密钥;辅助邮箱</option>
+                <option value="RECOVERY_EMAIL" data-i18n="template_recovery">账号;密码;辅助邮箱;2FA 密钥</option>
               </select>
               <div id="templateHint" style="font-size: 11px; color: var(--ink-soft);"></div>
             </div>
@@ -515,6 +560,7 @@
                <button id="exportSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="export_selected">导出选中</button>
                <button id="resetSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="reset_selected">重置选中</button>
                <button id="setProductSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="set_product_selected">设为成品号</button>
+               <button id="deleteSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="delete_selected">删除选中</button>
                <button id="clearSelectionBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="clear_select">清空</button>
             </div>
           </div>
@@ -559,6 +605,48 @@
       </section>
     </main>
 
+    <div id="editModal" class="modal" data-open="false" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+        <h3 id="editModalTitle" data-i18n="edit_title">编辑账号</h3>
+        <div class="field">
+          <label for="editEmail" data-i18n="edit_email">账号</label>
+          <input id="editEmail" type="text" />
+        </div>
+        <div class="field">
+          <label for="editPassword" data-i18n="edit_password">密码</label>
+          <input id="editPassword" type="text" />
+        </div>
+        <div class="field">
+          <label for="editRecovery" data-i18n="edit_recovery_email">辅助邮箱</label>
+          <input id="editRecovery" type="text" />
+        </div>
+        <div class="field">
+          <label for="editToken" data-i18n="edit_2fa">2FA 密钥</label>
+          <input id="editToken" type="text" />
+        </div>
+        <div class="field">
+          <label for="editStatus" data-i18n="edit_status">状态</label>
+          <select id="editStatus">
+            <option value="IDLE">IDLE</option>
+            <option value="CHECKING">CHECKING</option>
+            <option value="QUALIFIED">QUALIFIED</option>
+            <option value="INVALID">INVALID</option>
+            <option value="PRODUCT">PRODUCT</option>
+          </select>
+        </div>
+        <div class="field">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input id="editSold" type="checkbox" />
+            <span data-i18n="edit_sold">已出售</span>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="editCancelBtn" class="secondary" type="button" data-i18n="edit_cancel">取消</button>
+          <button id="editSaveBtn" type="button" data-i18n="edit_save">保存</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       /* --- Icons Definitions (Inline SVG Strings for JS Injection) --- */
       const ICONS = {
@@ -591,33 +679,43 @@
       const exportSelectedBtn = document.getElementById("exportSelectedBtn");
       const resetSelectedBtn = document.getElementById("resetSelectedBtn");
       const setProductSelectedBtn = document.getElementById("setProductSelectedBtn");
+      const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
       const clearSelectionBtn = document.getElementById("clearSelectionBtn");
       const themeToggleBtn = document.getElementById("themeToggle");
       const langButtons = document.querySelectorAll(".lang-switch button[data-lang]");
       const categoryBar = document.getElementById("categoryBar");
+      const editModal = document.getElementById("editModal");
+      const editEmailInput = document.getElementById("editEmail");
+      const editPasswordInput = document.getElementById("editPassword");
+      const editRecoveryInput = document.getElementById("editRecovery");
+      const editTokenInput = document.getElementById("editToken");
+      const editStatusSelect = document.getElementById("editStatus");
+      const editSoldInput = document.getElementById("editSold");
+      const editSaveBtn = document.getElementById("editSaveBtn");
+      const editCancelBtn = document.getElementById("editCancelBtn");
       let refreshTimer = null;
       let currentLang = "zh";
-      let editingEmail = null;
       let lastAccounts = [];
       const selectedEmails = new Set();
       let currentCategory = "ALL";
+      const excelExtensions = [".xlsx", ".xls"];
 
       const i18n = {
         zh: {
           page_title: "账号状态面板",
           title: "Account Pulse",
-          subtitle: "导入账号TXT文件，监控API状态变化。",
+          subtitle: "导入账号 TXT/Excel 文件，监控 API 状态变化。",
           import_title: "导入与刷新",
-          file_label: "TXT 文件",
-          file_hint_none: "未选择文件（支持多选）",
+          file_label: "TXT / Excel 文件",
+          file_hint_none: "未选择文件（支持多选 .txt/.xlsx/.xls）",
           file_hint_count: (n) => `已选择 ${n} 个文件`,
           template_label: "导入模板",
           template_auto: "自动识别",
-          template_token: "账号;密码;2FA 密钥",
-          template_recovery: "账号;密码;恢复邮箱",
-          template_hint_auto: "自动识别：3列且第3列像邮箱时视为恢复邮箱，否则视为 2FA 密钥。",
-          template_hint_token: "模板：账号;密码;2FA 密钥（可追加 4-6 列）。",
-          template_hint_recovery: "模板：账号;密码;恢复邮箱。",
+          template_token: "账号;密码;2FA 密钥;辅助邮箱",
+          template_recovery: "账号;密码;辅助邮箱;2FA 密钥",
+          template_hint_auto: "自动识别：3列第3列像邮箱视为辅助邮箱；4列按邮箱列判断顺序。",
+          template_hint_token: "模板：账号;密码;2FA 密钥;辅助邮箱（最后一列可为空）。",
+          template_hint_recovery: "模板：账号;密码;辅助邮箱;2FA 密钥（最后一列可为空）。",
           import_btn: "开始导入",
           cat_all: "全部",
           cat_qualified: "资质号",
@@ -694,6 +792,14 @@
           msg_sheerid_delete_done: "认证链接已删除",
           msg_sheerid_delete_fail: "删除认证链接失败",
           edit_hint: "双击行可编辑内容",
+          edit_btn: "编辑",
+          edit_title: "编辑账号",
+          edit_email: "账号",
+          edit_password: "密码",
+          edit_recovery_email: "辅助邮箱",
+          edit_2fa: "2FA 密钥",
+          edit_status: "状态",
+          edit_sold: "已出售",
           edit_save: "保存",
           edit_cancel: "取消",
           msg_edit_saved: "已保存",
@@ -702,8 +808,15 @@
           msg_export_done: "已复制到剪贴板",
           msg_export_fail: "复制失败",
           export_selected: "导出选中",
+          export_labels: {
+            email: "账号",
+            password: "密码",
+            recoveryEmail: "辅助邮箱",
+            authenticatorToken: "2FA秘钥",
+          },
           reset_selected: "重置选中",
           set_product_selected: "设为成品号",
+          delete_selected: "删除选中",
           clear_select: "清空",
           selected_count: (n) => `${n} 已选`,
           msg_export_none: "未选择账号",
@@ -715,6 +828,10 @@
           msg_set_product_selected_confirm: (n) => `确认将选中的 ${n} 个账号设为 成品号？`,
           msg_set_product_selected_done: (n) => `已设置 ${n} 个账号为 成品号`,
           msg_set_product_selected_fail: "批量设置失败",
+          msg_delete_selected_none: "未选择账号",
+          msg_delete_selected_confirm: (n) => `确认删除选中的 ${n} 个账号？`,
+          msg_delete_selected_done: (n) => `已删除 ${n} 个账号`,
+          msg_delete_selected_fail: "批量删除失败",
           msg_status_updated: "状态已更新",
           msg_status_update_fail: "更新状态失败",
           msg_cell_copied: "已复制",
@@ -727,18 +844,18 @@
         en: {
           page_title: "Account Pulse",
           title: "Account Pulse",
-          subtitle: "Import TXT accounts and track status changes regarding APIs.",
+          subtitle: "Import TXT/Excel accounts and track status changes regarding APIs.",
           import_title: "Import & Refresh",
-          file_label: "TXT File",
-          file_hint_none: "No file selected",
+          file_label: "TXT / Excel File",
+          file_hint_none: "No file selected (.txt/.xlsx/.xls)",
           file_hint_count: (n) => `${n} files selected`,
           template_label: "Import Template",
           template_auto: "Auto Detect",
-          template_token: "Account;Password;2FA Token",
-          template_recovery: "Account;Password;Recovery Email",
-          template_hint_auto: "Auto: if 3 columns and column 3 looks like email -> recovery email, else 2FA token.",
-          template_hint_token: "Template: account;password;2FA token (optional columns 4-6).",
-          template_hint_recovery: "Template: account;password;recovery email.",
+          template_token: "Account;Password;2FA Token;Recovery Email",
+          template_recovery: "Account;Password;Recovery Email;2FA Token",
+          template_hint_auto: "Auto: 3 columns -> column 3 email means recovery; 4 columns -> detect email column.",
+          template_hint_token: "Template: account;password;2FA token;recovery email (last can be empty).",
+          template_hint_recovery: "Template: account;password;recovery email;2FA token (last can be empty).",
           import_btn: "Start Import",
           cat_all: "All",
           cat_qualified: "Qualified",
@@ -815,6 +932,14 @@
           msg_sheerid_delete_done: "SheerID link deleted",
           msg_sheerid_delete_fail: "Failed to delete SheerID link",
           edit_hint: "Double click to edit",
+          edit_btn: "Edit",
+          edit_title: "Edit Account",
+          edit_email: "Email",
+          edit_password: "Password",
+          edit_recovery_email: "Recovery Email",
+          edit_2fa: "2FA Token",
+          edit_status: "Status",
+          edit_sold: "Sold",
           edit_save: "Save",
           edit_cancel: "Cancel",
           msg_edit_saved: "Saved",
@@ -823,8 +948,15 @@
           msg_export_done: "Copied",
           msg_export_fail: "Copy Failed",
           export_selected: "Export Sel.",
+          export_labels: {
+            email: "email",
+            password: "password",
+            recoveryEmail: "recoveryEmail",
+            authenticatorToken: "authenticatorToken",
+          },
           reset_selected: "Reset Sel.",
           set_product_selected: "Set PRODUCT",
+          delete_selected: "Delete Sel.",
           clear_select: "Clear",
           selected_count: (n) => `${n} selected`,
           msg_export_none: "None selected",
@@ -836,6 +968,10 @@
           msg_set_product_selected_confirm: (n) => `Set ${n} selected to PRODUCT?`,
           msg_set_product_selected_done: (n) => `Set ${n} items to PRODUCT`,
           msg_set_product_selected_fail: "Failed",
+          msg_delete_selected_none: "None selected",
+          msg_delete_selected_confirm: (n) => `Delete ${n} selected?`,
+          msg_delete_selected_done: (n) => `Deleted ${n} items`,
+          msg_delete_selected_fail: "Delete failed",
           msg_status_updated: "Status updated",
           msg_status_update_fail: "Update failed",
           msg_cell_copied: "Copied",
@@ -846,6 +982,39 @@
           empty_sheerid: "No links",
         },
       };
+
+      function openEditModal(account) {
+        if (!editModal) return;
+        editModal.dataset.originalEmail = account.email || "";
+        editEmailInput.value = account.email || "";
+        editPasswordInput.value = account.password || "";
+        editRecoveryInput.value = account.recoveryEmail || "";
+        editTokenInput.value = account.authenticatorToken || "";
+        editStatusSelect.value = account.status || "IDLE";
+        editSoldInput.checked = !!account.sold;
+        editModal.dataset.open = "true";
+        editModal.setAttribute("aria-hidden", "false");
+      }
+
+      function closeEditModal() {
+        if (!editModal) return;
+        editModal.dataset.open = "false";
+        editModal.setAttribute("aria-hidden", "true");
+      }
+
+      function buildExportText(account) {
+        const lines = [];
+        const labels = i18n[currentLang].export_labels;
+        const email = (account.email || "").trim();
+        const password = (account.password || "").trim();
+        const recoveryEmail = (account.recoveryEmail || "").trim();
+        const authenticatorToken = (account.authenticatorToken || "").trim();
+        if (email) lines.push(`${labels.email.trim()}${email}`);
+        if (password) lines.push(`${labels.password.trim()}${password}`);
+        if (recoveryEmail) lines.push(`${labels.recoveryEmail.trim()}${recoveryEmail}`);
+        if (authenticatorToken) lines.push(`${labels.authenticatorToken.trim()}${authenticatorToken}`);
+        return lines.join("\n");
+      }
 
       function setMessage(text, tone = "info") {
         messageEl.textContent = text;
@@ -1229,41 +1398,8 @@
         updateSelectionUI();
 
         tableBody.innerHTML = accounts
-          .map(
-            (account) => {
-              const isEditing = editingEmail && account.email === editingEmail;
-              if (isEditing) {
-                return `<tr data-email="${account.email}" class="row-editing">
-                <td style="text-align:center;">
-                  <input type="checkbox" class="row-select" data-email="${account.email}" ${
-                    selectedEmails.has(account.email) ? "checked" : ""
-                  } />
-                </td>
-                <td class="col-email">${account.email}</td>
-                <td class="col-password"><input class="edit-password" type="text" value="${(account.password || "").replaceAll('"', "&quot;")}" /></td>
-                <td class="col-recovery">${account.recoveryEmail || ""}</td>
-                <td class="col-token"><input class="edit-2fa" type="text" value="${(account.authenticatorToken || "").replaceAll('"', "&quot;")}" /></td>
-                <td>
-                  <select class="edit-status">
-                    ${["IDLE", "CHECKING", "QUALIFIED", "INVALID", "PRODUCT"]
-                      .map((s) => `<option value="${s}" ${s === account.status ? "selected" : ""}>${s}</option>`)
-                      .join("")}
-                  </select>
-                </td>
-                <td>
-                  <label>
-                    <input type="checkbox" class="sold-toggle" data-email="${account.email}" ${
-                      account.sold ? "checked" : ""
-                    } />
-                  </label>
-                </td>
-                <td style="text-align:right;">
-                  <button class="secondary edit-save" data-email="${account.email}" style="padding:4px 8px;" title="${t.edit_save}">${ICONS.check}</button>
-                  <button class="secondary edit-cancel" data-email="${account.email}" style="padding:4px 8px;" title="${t.edit_cancel}">${ICONS.x}</button>
-                </td>
-              </tr>`;
-              }
-              return `<tr data-email="${account.email}">
+          .map((account) => {
+            return `<tr data-email="${account.email}">
                 <td style="text-align:center;">
                   <input type="checkbox" class="row-select" data-email="${account.email}" ${
                     selectedEmails.has(account.email) ? "checked" : ""
@@ -1274,16 +1410,14 @@
                 <td class="copyable col-recovery" data-copy-type="recovery" title="Copy">${account.recoveryEmail || ""}</td>
                 <td class="copyable col-token" data-copy-type="token" title="Copy" style="font-family:'JetBrains Mono'; font-size:12px;">${account.authenticatorToken || ""}</td>
                 <td class="status-cell" data-email="${account.email}"><span class="${statusChipClass(account)}">${statusLabel(account)}</span></td>
-                <td>
-                   <input type="checkbox" class="sold-toggle" data-email="${account.email}" ${account.sold ? "checked" : ""} />
-                </td>
+                <td>${account.sold ? t.sold_yes : t.sold_no}</td>
                 <td style="text-align:right; white-space:nowrap;">
                   <button class="secondary export-btn" data-email="${account.email}" style="padding:4px 8px;">${t.export_btn}</button>
+                  <button class="secondary edit-btn" data-email="${account.email}" style="padding:4px 8px;">${t.edit_btn}</button>
                   <button class="secondary delete-btn" data-email="${account.email}" style="padding:4px 8px; color: var(--status-invalid-text); border-color: rgba(200,0,0,0.2);">${t.delete_btn}</button>
                 </td>
               </tr>`;
-            }
-          )
+          })
           .join("");
 
         // Keep event listeners logic same as before...
@@ -1311,144 +1445,34 @@
             });
         });
 
-        async function updateAccountStatus(email, status) {
-          const t = i18n[currentLang];
-          try {
-            const resp = await fetch("/api/status", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email, status }),
-            });
-            if (!resp.ok) throw new Error("status failed");
-            setMessage(t.msg_status_updated);
-            await fetchAccounts();
-          } catch (e) {
-            setMessage(t.msg_status_update_fail, "error");
-          }
-        }
-
-        tableBody.querySelectorAll(".status-cell").forEach((cell) => {
-          cell.addEventListener("dblclick", (event) => {
-            event.preventDefault(); event.stopPropagation();
-            const email = cell.getAttribute("data-email");
-            if (!email || cell.querySelector("select")) return;
-            const current = (lastAccounts.find((a) => a && a.email === email)?.status || "IDLE").toString();
-            const select = document.createElement("select");
-            ["IDLE", "CHECKING", "QUALIFIED", "INVALID", "PRODUCT"].forEach((s) => {
-              const opt = document.createElement("option");
-              opt.value = s;
-              opt.textContent = s;
-              if (s === current) opt.selected = true;
-              select.appendChild(opt);
-            });
-            const original = cell.innerHTML;
-            cell.innerHTML = ""; cell.appendChild(select); select.focus();
-            const cancel = () => { cell.innerHTML = original; };
-            select.addEventListener("keydown", (e) => {
-               if (e.key === "Escape") { e.preventDefault(); cancel(); }
-               if (e.key === "Enter") { e.preventDefault(); select.blur(); }
-            });
-            select.addEventListener("change", async () => {
-              const next = select.value || current; await updateAccountStatus(email, next);
-            });
-            select.addEventListener("blur", cancel);
-          });
-        });
-
-        tableBody.querySelectorAll(".edit-status").forEach((el) => {
-          el.addEventListener("change", async (event) => {
-            event.stopPropagation();
-            const row = el.closest("tr[data-email]");
-            const email = row ? row.getAttribute("data-email") : null;
-            if (!email) return;
-            const status = el.value || "";
-            if (!status) return;
-            await updateAccountStatus(email, status);
-          });
-        });
-
-        tableBody.querySelectorAll(".sold-toggle").forEach((el) => {
-          el.addEventListener("change", async (event) => {
-            const input = event.target;
-            const email = input.getAttribute("data-email");
-            const sold = input.checked;
-            try {
-              const resp = await fetch("/api/sold", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, sold }),
-              });
-              if (!resp.ok) throw new Error("update failed");
-              setMessage(i18n[currentLang].msg_sold_updated);
-              await fetchAccounts();
-            } catch (e) {
-              input.checked = !sold;
-              setMessage(i18n[currentLang].msg_sold_update_fail, "error");
-            }
-          });
-        });
-
         tableBody.querySelectorAll(".export-btn").forEach((el) => {
           el.addEventListener("click", async (event) => {
             event.preventDefault(); event.stopPropagation();
             const btn = event.target.closest(".export-btn");
             const email = btn.getAttribute("data-email");
-            const row = btn.closest("tr");
-            const passwordInput = row.querySelector(".edit-password");
-            const tokenInput = row.querySelector(".edit-2fa");
-            const password = passwordInput ? passwordInput.value : (row.children[2]?.textContent || "");
-            const token = tokenInput ? tokenInput.value : (row.children[4]?.textContent || "");
-            const text = `|${email}|${password}|${token}|`;
+            const t = i18n[currentLang];
+            const account = lastAccounts.find((a) => a && a.email === email);
+            const fallback = {
+              email,
+              password: btn.closest("tr")?.children[2]?.textContent || "",
+              recoveryEmail: btn.closest("tr")?.children[3]?.textContent || "",
+              authenticatorToken: btn.closest("tr")?.children[4]?.textContent || "",
+            };
+            const text = buildExportText(account || fallback);
+            if (!text) { setMessage(t.msg_export_none, "error"); return; }
             const ok = await copyText(text);
             if (ok) setMessage(i18n[currentLang].msg_export_done);
             else setMessage(i18n[currentLang].msg_export_fail, "error");
           });
         });
 
-        tableBody.querySelectorAll("tr[data-email]").forEach((row) => {
-          row.addEventListener("dblclick", (event) => {
-            const target = event.target;
-            if (target.closest("button") || target.closest("input") || target.closest("label") || target.closest(".status-cell") || target.classList.contains("sold-toggle")) return;
-            const email = row.getAttribute("data-email");
-            editingEmail = email;
-            setMessage(t.edit_hint);
-            renderTable(accounts);
-          });
-        });
-
-        tableBody.querySelectorAll(".edit-cancel").forEach((el) => {
+        tableBody.querySelectorAll(".edit-btn").forEach((el) => {
           el.addEventListener("click", (event) => {
             event.preventDefault(); event.stopPropagation();
-            editingEmail = null;
-            renderTable(accounts);
-          });
-        });
-
-        tableBody.querySelectorAll(".edit-save").forEach((el) => {
-          el.addEventListener("click", async (event) => {
-            event.preventDefault(); event.stopPropagation();
             const email = el.getAttribute("data-email");
-            const row = el.closest("tr");
-            const password = row.querySelector(".edit-password").value || "";
-            const authenticatorToken = row.querySelector(".edit-2fa").value || "";
-            const status = row.querySelector(".edit-status")?.value || "";
-            try {
-              const content = `${email};${password};${authenticatorToken}\n`;
-              const resp = await fetch("/api/import", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ content, template: "TOKEN" }),
-              });
-              if (!resp.ok) throw new Error("save failed");
-              if (status) await fetch("/api/status", {
-                  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, status })
-              });
-              editingEmail = null;
-              setMessage(t.msg_edit_saved);
-              await fetchAccounts();
-            } catch (e) {
-              setMessage(t.msg_edit_save_fail, "error");
-            }
+            const account = lastAccounts.find((a) => a && a.email === email);
+            if (!account) return;
+            openEditModal(account);
           });
         });
 
@@ -1515,6 +1539,93 @@
         templateHintEl.textContent = t.template_hint_auto;
       }
 
+      if (editCancelBtn) {
+        editCancelBtn.addEventListener("click", () => closeEditModal());
+      }
+      if (editModal) {
+        editModal.addEventListener("click", (event) => {
+          if (event.target === editModal) closeEditModal();
+        });
+      }
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && editModal?.dataset.open === "true") {
+          closeEditModal();
+        }
+      });
+      if (editSaveBtn) {
+        editSaveBtn.addEventListener("click", async () => {
+          const t = i18n[currentLang];
+          const originalEmail = editModal?.dataset.originalEmail || "";
+          const email = editEmailInput.value.trim();
+          if (!email || !originalEmail) {
+            setMessage(t.msg_edit_save_fail, "error");
+            return;
+          }
+          const payload = {
+            originalEmail,
+            email,
+            password: editPasswordInput.value || "",
+            recoveryEmail: editRecoveryInput.value || "",
+            authenticatorToken: editTokenInput.value || "",
+            status: editStatusSelect.value || "IDLE",
+            sold: !!editSoldInput.checked,
+          };
+          try {
+            const resp = await fetch("/api/update-account", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!resp.ok) throw new Error("update failed");
+            setMessage(t.msg_edit_saved);
+            closeEditModal();
+            await fetchAccounts();
+          } catch (e) {
+            setMessage(t.msg_edit_save_fail, "error");
+          }
+        });
+      }
+
+      function isExcelFile(file) {
+        const name = (file?.name || "").toLowerCase();
+        return excelExtensions.some((ext) => name.endsWith(ext));
+      }
+
+      function rowsToImportText(rows) {
+        const lines = [];
+        (rows || []).forEach((row) => {
+          if (!row) return;
+          const normalized = row.map((cell) => String(cell ?? "").trim());
+          if (normalized.every((cell) => cell === "")) return;
+          lines.push(normalized.join(";"));
+        });
+        return lines.join("\n");
+      }
+
+      async function readExcelContent(file) {
+        if (!window.XLSX) {
+          throw new Error("Excel parser not loaded");
+        }
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: "array" });
+        const lines = [];
+        (workbook.SheetNames || []).forEach((name) => {
+          const sheet = workbook.Sheets[name];
+          if (!sheet) return;
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
+          const text = rowsToImportText(rows);
+          if (text) lines.push(text);
+        });
+        return lines.join("\n");
+      }
+
+      async function readImportContent(file) {
+        if (isExcelFile(file)) {
+          return readExcelContent(file);
+        }
+        return file.text();
+      }
+
       importBtn.addEventListener("click", async () => {
         const files = Array.from(fileInput.files || []);
         if (files.length === 0) {
@@ -1527,7 +1638,7 @@
           let totalAdded = 0, totalUpdated = 0, totalSkipped = 0;
           for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const content = await file.text();
+            const content = await readImportContent(file);
             const response = await fetch("/api/import", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -1604,15 +1715,9 @@
         const t = i18n[currentLang];
         const chosen = lastAccounts.filter((a) => selectedEmails.has(a.email));
         if (chosen.length === 0) { setMessage(t.msg_export_none, "error"); return; }
-        const lines = chosen.map((a) => {
-          const row = tableBody.querySelector(`tr[data-email="${a.email}"]`);
-          const pwInput = row ? row.querySelector(".edit-password") : null;
-          const tokInput = row ? row.querySelector(".edit-2fa") : null;
-          const pw = pwInput ? pwInput.value : a.password || "";
-          const tok = tokInput ? tokInput.value : a.authenticatorToken || "";
-          return `|${a.email}|${pw}|${tok}|`;
-        });
-        if (await copyText(lines.join("\n"))) setMessage(t.msg_export_done);
+        const lines = chosen.map((a) => buildExportText(a)).filter((text) => text);
+        if (lines.length === 0) { setMessage(t.msg_export_none, "error"); return; }
+        if (await copyText(lines.join("\n\n"))) setMessage(t.msg_export_done);
         else setMessage(t.msg_export_fail, "error");
       });
       resetSelectedBtn.addEventListener("click", async () => {
@@ -1647,6 +1752,28 @@
             await fetchAccounts();
           } catch (e) {
             setMessage(t.msg_set_product_selected_fail, "error");
+          }
+        });
+      }
+
+      if (deleteSelectedBtn) {
+        deleteSelectedBtn.addEventListener("click", async () => {
+          const t = i18n[currentLang];
+          const emails = Array.from(selectedEmails);
+          if (emails.length === 0) { setMessage(t.msg_delete_selected_none, "error"); return; }
+          if (!window.confirm(t.msg_delete_selected_confirm(emails.length))) return;
+          try {
+            const resp = await fetch("/api/delete-batch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ emails }),
+            });
+            if (!resp.ok) throw new Error("bulk delete failed");
+            setMessage(t.msg_delete_selected_done(emails.length));
+            selectedEmails.clear();
+            await fetchAccounts();
+          } catch (e) {
+            setMessage(t.msg_delete_selected_fail, "error");
           }
         });
       }
