@@ -234,11 +234,18 @@
           <p class="subtitle" data-i18n="subtitle">API Status Monitor</p>
         </div>
       </div>
-      <div style="display:flex; gap:8px;">
-        <button id="themeToggle" class="secondary icon-btn" title="Switch Theme"></button>
-        <div style="display:flex; border:1px solid var(--border); border-radius: var(--radius); padding:2px;">
-          <button id="langZh" class="ghost" style="padding:4px 8px; font-size:11px;" data-lang="zh">CN</button>
-          <button id="langEn" class="ghost" style="padding:4px 8px; font-size:11px;" data-lang="en">EN</button>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-end; border-right:1px solid var(--border); padding-right:16px;">
+          <div id="onekeyRate" style="font-size:14px; font-weight:700; color:var(--status-qualified-text);">--</div>
+          <div style="font-size:10px; color:var(--ink-soft);">1Key Rate</div>
+          <div id="onekeyStats" style="font-size:9px; color:var(--ink-soft); display:none;"></div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="themeToggle" class="secondary icon-btn" title="Switch Theme"></button>
+          <div style="display:flex; border:1px solid var(--border); border-radius: var(--radius); padding:2px;">
+            <button id="langZh" class="ghost" style="padding:4px 8px; font-size:11px;" data-lang="zh">CN</button>
+            <button id="langEn" class="ghost" style="padding:4px 8px; font-size:11px;" data-lang="en">EN</button>
+          </div>
         </div>
       </div>
     </header>
@@ -295,7 +302,7 @@
         <div>
           <h2><svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> OneKey Batch</h2>
           <div class="card-box" style="border-left: 3px solid var(--accent-subtle);">
-            <textarea id="onekeyIds" rows="2" placeholder="verificationId (one per line)" style="resize:none; margin-bottom:8px;"></textarea>
+            <textarea id="onekeyIds" rows="4" placeholder="verificationId (one per line)" style="resize:vertical; margin-bottom:8px;"></textarea>
             <div style="display:flex; gap:6px; margin-bottom:8px;">
               <input id="onekeyProgramId" placeholder="programId" style="flex:1; font-size:11px;" />
               <label style="font-size:11px; display:flex; align-items:center; cursor:pointer;"><input id="onekeyUseLucky" type="checkbox"/> Lucky</label>
@@ -542,6 +549,8 @@
         const v = view === "SHEERID" ? "SHEERID" : "ACCOUNTS";
         if (persist) localStorage.setItem("status_view", v);
         const t = i18n[currentLang];
+        // 禁用/启用分类按钮
+        categoryBar.querySelectorAll(".cat-btn").forEach(btn => { btn.disabled = v === "SHEERID"; btn.style.opacity = v === "SHEERID" ? "0.5" : "1"; });
         if (v === "SHEERID") { accountsViewEl.style.display = "none"; sheeridViewEl.style.display = "flex"; toggleSheeridViewBtn.querySelector("span").textContent = t.view_accounts; }
         else { accountsViewEl.style.display = "flex"; sheeridViewEl.style.display = "none"; toggleSheeridViewBtn.querySelector("span").textContent = t.view_sheerid; }
         renderActiveView();
@@ -612,6 +621,57 @@
       function statusChipClass(account) { return `status-chip ${account?.status || ""}`; }
       function getQualifiedSheeridAccounts() { return (lastAccounts || []).filter(a => a && a.status === "QUALIFIED" && a.sheeridUrl && String(a.sheeridUrl).trim()); }
 
+      // 验证状态缓存（从数据库加载）
+      const verifyStatusByEmail = new Map(); // email -> text
+
+      function applyVerifyStatus(email, text) {
+        if (!email) return;
+        const safe = text || "-";
+        verifyStatusByEmail.set(email, safe);
+        const row = sheeridTableBody ? sheeridTableBody.querySelector(`tr[data-email="${email}"]`) : null;
+        if (row) {
+          const cell = row.querySelector(".verify-status");
+          if (cell) cell.textContent = safe;
+        }
+      }
+
+      async function recordVerifyStatus(email, status, message) {
+        if (!email) return;
+        const safeStatus = status == null ? "" : String(status).trim();
+        const safeMessage = message == null ? "" : String(message).trim();
+        const display = safeMessage || safeStatus || "-";
+        applyVerifyStatus(email, display);
+        try {
+          await fetch("/api/verify-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, status: safeStatus, message: safeMessage })
+          });
+        } catch {}
+      }
+
+      async function fetchVerifyStatuses(accounts) {
+        const list = Array.isArray(accounts) ? accounts : [];
+        if (!list.length) return;
+        const emails = list.map(a => a.email).filter(Boolean);
+        if (!emails.length) return;
+        try {
+          const res = await fetch("/api/verify-statuses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ emails })
+          });
+          if (!res.ok) throw new Error();
+          const data = await res.json();
+          const items = Array.isArray(data.items) ? data.items : [];
+          items.forEach((item) => {
+            const email = item.email;
+            const text = item.message || item.status || "-";
+            if (email) applyVerifyStatus(email, text);
+          });
+        } catch {}
+      }
+
       async function fetchCheckToken(verificationIds, useLucky, programId) {
         const resp = await fetch("/api/sheerid-verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ verificationIds, useLucky, programId }) });
         if (!resp.ok) throw new Error("Request failed: " + resp.status);
@@ -647,12 +707,14 @@
         if (!accounts || accounts.length === 0) { sheeridTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px;">${t.empty_sheerid}</td></tr>`; return; }
         sheeridTableBody.innerHTML = accounts.map(a => {
           const url = String(a.sheeridUrl || "").trim();
-          const idMatch = url.match(/([a-f0-9]{24})/i);
+          const idMatch = url.match(/[?&]verificationId=([a-f0-9]{24})/i);
           const verifyId = idMatch ? idMatch[1] : "";
+          // 从缓存获取验证状态
+          const cachedStatus = verifyStatusByEmail.get(a.email) || "-";
           return `<tr data-email="${a.email}" data-verify-id="${verifyId}">
             <td class="copyable" data-copy-type="email" title="Click to copy">${a.email}</td>
             <td class="copyable sheerid-cell" data-email="${a.email}" title="Click to copy">${url}</td>
-            <td class="verify-status" data-email="${a.email}" style="font-size:12px; color:var(--ink-soft);">-</td>
+            <td class="verify-status" data-email="${a.email}" style="font-size:12px; color:var(--ink-soft);">${cachedStatus}</td>
             <td style="text-align:right; white-space:nowrap;">
               <button class="secondary sheerid-verify-btn" data-email="${a.email}" data-verify-id="${verifyId}" style="padding:4px 8px;" ${!verifyId ? 'disabled' : ''}>${t.verify_btn}</button>
               <button class="secondary sheerid-delete-btn" data-email="${a.email}" style="padding:4px 8px; color:var(--status-invalid-text);">${t.delete_btn}</button>
@@ -717,22 +779,26 @@
             const email = btn.getAttribute("data-email");
             const verifyId = btn.getAttribute("data-verify-id");
             if (!verifyId) return;
-            const statusCell = sheeridTableBody.querySelector(`.verify-status[data-email="${email}"]`);
-            if (statusCell) statusCell.textContent = "验证中...";
+            applyVerifyStatus(email, "验证中...");
             btn.disabled = true;
             try {
               await verifySheeridStatus([verifyId], result => {
-                if (statusCell && result) {
+                if (result) {
                   const msg = result.message || result.currentStep || result.status || JSON.stringify(result);
-                  statusCell.textContent = msg;
-                  statusCell.style.color = (result.currentStep === "success" || result.status === "success") ? "var(--status-qualified-text)" : "var(--status-invalid-text)";
-                  // 验证成功时记录历史
-                  if (result.currentStep === "success" || result.status === "success") {
+                  const isSuccess = result.currentStep === "success" || result.status === "success";
+                  applyVerifyStatus(email, msg);
+                  // 保存到数据库
+                  recordVerifyStatus(email, isSuccess ? "success" : "fail", msg);
+                  if (isSuccess) {
                     recordVerifyHistory(email);
                   }
                 }
               });
-            } catch (err) { if (statusCell) statusCell.textContent = "失败: " + err.message; }
+            } catch (err) { 
+              const errMsg = "失败: " + err.message;
+              applyVerifyStatus(email, errMsg);
+              recordVerifyStatus(email, "error", errMsg);
+            }
             finally { btn.disabled = false; }
           });
         });
@@ -770,9 +836,15 @@
         } catch {}
       }
 
-      function renderActiveView() {
+      async function renderActiveView() {
         const view = getCurrentStatusView();
-        if (view === "SHEERID") { renderSheeridTable(getQualifiedSheeridAccounts()); fetchVerifyHistory(); return; }
+        if (view === "SHEERID") { 
+          const accounts = getQualifiedSheeridAccounts();
+          await fetchVerifyStatuses(accounts);
+          renderSheeridTable(accounts); 
+          fetchVerifyHistory(); 
+          return; 
+        }
         renderTable(getFilteredAccounts());
       }
 
@@ -1002,7 +1074,7 @@
         } catch { setMessage(t.msg_delete_selected_fail, "error"); }
       });
 
-      applyRefreshBtn.addEventListener("click", scheduleRefresh);
+      applyRefreshBtn.addEventListener("click", () => { scheduleRefresh(); scheduleOnekeyRate(); });
       manualRefreshBtn.addEventListener("click", fetchAccounts);
       document.getElementById("toggleAutoRefresh").addEventListener("click", () => {
         autoRefreshEnabled = !autoRefreshEnabled;
@@ -1051,7 +1123,14 @@
         const raw = (onekeyIdsEl.value || "").trim();
         if (!raw) { onekeyResultEl.textContent = t.msg_onekey_missing; return; }
         const lines = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-        const ids = lines.map(line => { const match = line.match(/([a-f0-9]{24})/i); return match ? match[1] : null; }).filter(Boolean);
+        const ids = lines.map(line => {
+          // 优先匹配 verificationId 参数
+          const paramMatch = line.match(/[?&]verificationId=([a-f0-9]{24})/i);
+          if (paramMatch) return paramMatch[1];
+          // 否则匹配单独的 24 位 ID
+          const idMatch = line.match(/^([a-f0-9]{24})$/i);
+          return idMatch ? idMatch[1] : null;
+        }).filter(Boolean);
         if (ids.length === 0) { onekeyResultEl.textContent = t.msg_onekey_missing; return; }
         if (ids.length > 5) { onekeyResultEl.textContent = t.msg_onekey_too_many; return; }
         const programId = (onekeyProgramIdEl.value || "").trim();
@@ -1074,8 +1153,36 @@
         finally { onekeyBatchBtn.disabled = false; }
       });
 
+      // 1Key 成功率监控
+      let onekeyRateTimer = null;
+      async function fetchOnekeyRate() {
+        try {
+          const d = await (await fetch("/api/onekey-status")).json();
+          const p = Number(d.pass || 0);
+          const f = Number(d.fail || 0);
+          const c = Number(d.cancel || 0);
+          const total = Number(d.total || 0);
+          const rate = total ? (Number(d.rate || 0) * 100).toFixed(2) : 0;
+          const el = document.getElementById("onekeyRate");
+          el.textContent = total ? (rate + "%") : "--";
+          el.style.color = Number(rate) > 50 ? "var(--status-qualified-text)" : "var(--status-invalid-text)";
+          const statsEl = document.getElementById("onekeyStats");
+          if (statsEl) {
+            statsEl.innerHTML = `<span style="color:var(--status-qualified-text)">Pass:${p}</span> <span style="color:var(--status-invalid-text)">Fail:${f}</span> Cancel:${c}`;
+            statsEl.style.display = "block";
+          }
+        } catch {}
+      }
+      function scheduleOnekeyRate() {
+        if (onekeyRateTimer) clearInterval(onekeyRateTimer);
+        const seconds = Math.max(Number(refreshSecondsInput.value) || 5, 5) * 12; // 基于刷新间隔的12倍，最少60秒
+        onekeyRateTimer = setInterval(fetchOnekeyRate, Math.max(seconds, 60) * 1000);
+      }
+      fetchOnekeyRate();
+
       applyLanguage(currentLang);
       scheduleRefresh();
+      scheduleOnekeyRate();
     </script>
   </body>
 </html>

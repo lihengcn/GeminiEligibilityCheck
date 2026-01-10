@@ -337,7 +337,7 @@ public class AccountController {
     }
 
     @GetMapping("/onekey-status")
-    public ResponseEntity<String> onekeyStatus() {
+    public ResponseEntity<Map<String, Object>> onekeyStatus() {
         try {
             // 先获取 CSRF token
             URL pageUrl = new URL("https://batch.1key.me/");
@@ -376,12 +376,42 @@ public class AccountController {
                 }
             }
             
-            return ResponseEntity.ok()
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(response.toString());
+            // 解析并计算统计
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            Map<String, Object> data = mapper.readValue(response.toString(), Map.class);
+            List<Map<String, Object>> history = (List<Map<String, Object>>) data.get("resultHistory");
+            
+            int pass = 0, fail = 0, cancel = 0, other = 0;
+            if (history != null) {
+                for (Map<String, Object> item : history) {
+                    Object r = item.get("r");
+                    if (r == null) { other++; continue; }
+                    int code = ((Number) r).intValue();
+                    if (code == 0) pass++;
+                    else if (code == 1) fail++;
+                    else if (code == 2) cancel++;
+                    else other++;
+                }
+            }
+            int total = pass + fail + cancel;
+            double rate = total > 0 ? (double) pass / total : 0;
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("pass", pass);
+            result.put("fail", fail);
+            result.put("cancel", cancel);
+            result.put("other", other);
+            result.put("total", total);
+            result.put("rate", rate);
+            result.put("availableSlots", data.get("availableSlots"));
+            result.put("maxConcurrent", data.get("maxConcurrent"));
+            result.put("activeJobs", data.get("activeJobs"));
+            
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("{\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}");
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
 
