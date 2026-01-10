@@ -25,6 +25,8 @@ import com.google.gemini.service.TotpService;
 import com.google.gemini.storage.AccountStorage;
 import com.google.gemini.storage.AccountStorage.ImportResult;
 import com.google.gemini.storage.AccountStorage.ImportTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -43,6 +45,8 @@ import java.nio.charset.StandardCharsets;
 @RestController
 @RequestMapping("/api")
 public class AccountController {
+    private static final Logger log = LoggerFactory.getLogger(AccountController.class);
+
     /**
      * 账号池与并发控制
      */
@@ -73,6 +77,11 @@ public class AccountController {
      */
     @PostMapping("/callback")
     public ResponseEntity<String> callback(@RequestBody CallbackRequest request) throws Exception {
+        String email = request == null ? null : request.getEmail();
+        String result = request == null ? null : request.getResult();
+        String sheeridUrl = request == null ? null : request.getSheeridUrl();
+        log.info("callback request: email={}, result={}, sheeridUrl={}", email, result, sheeridUrl);
+
         if (request == null || request.getEmail() == null || request.getEmail().isBlank()
                 || request.getResult() == null || request.getResult().isBlank()) {
             return ResponseEntity.badRequest().body("email/result required");
