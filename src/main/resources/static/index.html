@@ -364,6 +364,20 @@
               <tbody id="sheeridTableBody"></tbody>
             </table>
           </div>
+          <div style="padding:12px; background:var(--status-qualified-bg); font-size:12px; border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
+            <span data-i18n="verify_history_title">验证成功历史</span>
+          </div>
+          <div class="table-scroll" style="max-height:200px;">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="th_email">账号</th>
+                  <th data-i18n="th_success_time">成功时间</th>
+                </tr>
+              </thead>
+              <tbody id="verifyHistoryBody"></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>
@@ -468,7 +482,8 @@
           msg_set_product_selected_none: "未选择", msg_set_product_selected_confirm: (n) => `确认设置${n}个为成品号？`, msg_set_product_selected_done: (n) => `已设置${n}个`, msg_set_product_selected_fail: "失败",
           msg_delete_selected_none: "未选择", msg_delete_selected_confirm: (n) => `确认删除${n}个？`, msg_delete_selected_done: (n) => `已删除${n}个`, msg_delete_selected_fail: "失败",
           msg_cell_copied: "已复制", msg_cell_copy_fail: "复制失败",
-          empty_table: "暂无数据", empty_sheerid: "暂无链接"
+          empty_table: "暂无数据", empty_sheerid: "暂无链接", empty_history: "暂无记录",
+          verify_history_title: "验证成功历史", th_success_time: "成功时间"
         },
         en: {
           page_title: "Account Pulse", title: "Account Pulse", subtitle: "Import accounts and track API status",
@@ -502,7 +517,8 @@
           msg_set_product_selected_none: "None", msg_set_product_selected_confirm: (n) => `Set ${n} to PRODUCT?`, msg_set_product_selected_done: (n) => `Set ${n}`, msg_set_product_selected_fail: "Failed",
           msg_delete_selected_none: "None", msg_delete_selected_confirm: (n) => `Delete ${n}?`, msg_delete_selected_done: (n) => `Deleted ${n}`, msg_delete_selected_fail: "Failed",
           msg_cell_copied: "Copied", msg_cell_copy_fail: "Error",
-          empty_table: "No data", empty_sheerid: "No links"
+          empty_table: "No data", empty_sheerid: "No links", empty_history: "No records",
+          verify_history_title: "Verify Success History", th_success_time: "Success Time"
         }
       };
 
@@ -710,6 +726,10 @@
                   const msg = result.message || result.currentStep || result.status || JSON.stringify(result);
                   statusCell.textContent = msg;
                   statusCell.style.color = (result.currentStep === "success" || result.status === "success") ? "var(--status-qualified-text)" : "var(--status-invalid-text)";
+                  // 验证成功时记录历史
+                  if (result.currentStep === "success" || result.status === "success") {
+                    recordVerifyHistory(email);
+                  }
                 }
               });
             } catch (err) { if (statusCell) statusCell.textContent = "失败: " + err.message; }
@@ -718,9 +738,41 @@
         });
       }
 
+      // 验证历史
+      const verifyHistoryBody = document.getElementById("verifyHistoryBody");
+      
+      async function fetchVerifyHistory() {
+        try {
+          const res = await fetch("/api/verify-history?limit=200");
+          if (!res.ok) throw new Error();
+          const data = await res.json();
+          renderVerifyHistory(data.items || []);
+        } catch { renderVerifyHistory([]); }
+      }
+
+      function renderVerifyHistory(items) {
+        const t = i18n[currentLang];
+        if (!items || items.length === 0) {
+          verifyHistoryBody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:20px; color:var(--ink-soft);">${t.empty_history}</td></tr>`;
+          return;
+        }
+        verifyHistoryBody.innerHTML = items.map(item => {
+          const time = item.successAt ? new Date(item.successAt).toLocaleString() : "-";
+          return `<tr><td>${item.email}</td><td>${time}</td></tr>`;
+        }).join("");
+      }
+
+      async function recordVerifyHistory(email) {
+        if (!email) return;
+        try {
+          await fetch("/api/verify-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+          fetchVerifyHistory();
+        } catch {}
+      }
+
       function renderActiveView() {
         const view = getCurrentStatusView();
-        if (view === "SHEERID") { renderSheeridTable(getQualifiedSheeridAccounts()); return; }
+        if (view === "SHEERID") { renderSheeridTable(getQualifiedSheeridAccounts()); fetchVerifyHistory(); return; }
         renderTable(getFilteredAccounts());
       }
 
