@@ -376,6 +376,23 @@ public class AccountStorage {
         return existing.size();
     }
 
+    @Transactional
+    public int deleteSoldAccounts() {
+        return accountRepository.deleteBySoldTrue();
+    }
+
+    @Transactional(readOnly = true)
+    public Account getAccountByStatus(AccountStatus status) {
+        if (status == null) {
+            return null;
+        }
+        Account account = accountRepository.findFirstByStatusOrderByEmailAsc(status).orElse(null);
+        if (account != null) {
+            attachSheerid(account);
+        }
+        return account;
+    }
+
     @Transactional(readOnly = true)
     public List<Account> listAccounts() {
         List<Account> list = accountRepository.findAll(Sort.by(Sort.Direction.ASC, "email"));

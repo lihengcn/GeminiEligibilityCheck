@@ -754,8 +754,28 @@
           el.addEventListener("click", async e => {
             e.stopPropagation();
             const row = el.closest("tr");
+            const copyType = el.getAttribute("data-copy-type");
+            
+            // 点击2FA列：自动填充到计算器并复制验证码
+            if (copyType === "token") {
+              const email = row ? row.getAttribute("data-email") : null;
+              const account = email ? lastAccounts.find(a => a && a.email === email) : null;
+              const secret = account?.authenticatorToken || (el.textContent || "").trim();
+              if (secret) {
+                try {
+                  twofaSecretInput.value = secret;
+                  twofaSecretInput.dispatchEvent(new Event("input"));
+                  const totp = new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(secret.replace(/\s/g, "").toUpperCase()) });
+                  const code = totp.generate();
+                  if (await copyText(code)) setMessage("Code: " + code);
+                  else setMessage(t.msg_cell_copy_fail, "error");
+                } catch { setMessage("Invalid Secret", "error"); }
+              }
+              return;
+            }
+            
             let text = (el.textContent || "").trim();
-            if (el.getAttribute("data-copy-type") === "email" && row) text = row.getAttribute("data-email") || text;
+            if (copyType === "email" && row) text = row.getAttribute("data-email") || text;
             if (!text) return;
             if (await copyText(text)) setMessage(t.msg_cell_copied);
             else setMessage(t.msg_cell_copy_fail, "error");

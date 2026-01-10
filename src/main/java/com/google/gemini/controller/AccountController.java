@@ -18,8 +18,15 @@ import com.google.gemini.dto.UpdateStatusRequest;
 import com.google.gemini.dto.StorageInfoResponse;
 import com.google.gemini.dto.SheeridVerifyRequest;
 import com.google.gemini.dto.UpdateAccountRequest;
+import com.google.gemini.dto.VerifyHistoryRequest;
+import com.google.gemini.dto.VerifyStatusRequest;
+import com.google.gemini.dto.VerifyStatusesRequest;
 import com.google.gemini.entity.Account;
 import com.google.gemini.entity.AccountStatus;
+import com.google.gemini.entity.VerifyHistory;
+import com.google.gemini.entity.VerifyStatus;
+import com.google.gemini.repository.VerifyHistoryRepository;
+import com.google.gemini.repository.VerifyStatusRepository;
 import com.google.gemini.service.SheeridVerifyService;
 import com.google.gemini.service.TotpService;
 import com.google.gemini.storage.AccountStorage;
@@ -30,34 +37,34 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
 public class AccountController {
     private static final Logger log = LoggerFactory.getLogger(AccountController.class);
 
-    /**
-     * 账号池与并发控制
-     */
     private final AccountStorage accountStorage;
     private final TotpService totpService;
     private final SheeridVerifyService sheeridVerifyService;
+    private final VerifyHistoryRepository verifyHistoryRepository;
+    private final VerifyStatusRepository verifyStatusRepository;
 
-    public AccountController(AccountStorage accountStorage, TotpService totpService, SheeridVerifyService sheeridVerifyService) {
+    public AccountController(AccountStorage accountStorage, TotpService totpService, SheeridVerifyService sheeridVerifyService,
+                             VerifyHistoryRepository verifyHistoryRepository, VerifyStatusRepository verifyStatusRepository) {
         this.accountStorage = accountStorage;
         this.totpService = totpService;
         this.sheeridVerifyService = sheeridVerifyService;
+        this.verifyHistoryRepository = verifyHistoryRepository;
+        this.verifyStatusRepository = verifyStatusRepository;
     }
 
     /**
@@ -376,5 +383,85 @@ public class AccountController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("{\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}");
         }
+    }
+
+    // ========== 验证历史 ==========
+    @GetMapping("/verify-history")
+    public ResponseEntity<Map<String, Object>> getVerifyHistory(@RequestParam(defaultValue = "200") int limit) {
+        List<VerifyHistory> items = verifyHistoryRepository.findTop200ByOrderBySuccessAtDesc();
+        Map<String, Object> result = new HashMap<>();
+        result.put("items", items);
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/verify-history")
+    public ResponseEntity<String> addVerifyHistory(@RequestBody VerifyHistoryRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().isBlank()) {
+            return ResponseEntity.badRequest().body("email required");
+        }
+        String email = request.getEmail().trim();
+        if (!accountStorage.exists(email)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
+        }
+        VerifyHistory history = new VerifyHistory();
+        history.setEmail(email);
+        verifyHistoryRepository.save(history);
+        return ResponseEntity.ok("ok");
+    }
+
+    // ========== 验证状态 ==========
+    @PostMapping("/verify-status")
+    public ResponseEntity<String> upsertVerifyStatus(@RequestBody VerifyStatusRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().isBlank()) {
+            return ResponseEntity.badRequest().body("email required");
+        }
+        String email = request.getEmail().trim();
+        if (!accountStorage.exists(email)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("account not found");
+        }
+        VerifyStatus vs = verifyStatusRepository.findById(email).orElse(new VerifyStatus());
+        vs.setEmail(email);
+        vs.setStatus(request.getStatus() != null ? request.getStatus().trim() : "");
+        vs.setMessage(request.getMessage() != null ? request.getMessage().trim() : "");
+        verifyStatusRepository.save(vs);
+        return ResponseEntity.ok("ok");
+    }
+
+    @PostMapping("/verify-statuses")
+    public ResponseEntity<Map<String, Object>> getVerifyStatuses(@RequestBody VerifyStatusesRequest request) {
+        List<String> emails = request != null && request.getEmails() != null ? request.getEmails() : Collections.emptyList();
+        List<String> cleaned = emails.stream().filter(e -> e != null && !e.isBlank()).map(String::trim).collect(Collectors.toList());
+        List<VerifyStatus> items = cleaned.isEmpty() ? Collections.emptyList() : verifyStatusRepository.findByEmailIn(cleaned);
+        Map<String, Object> result = new HashMap<>();
+        result.put("items", items);
+        return ResponseEntity.ok(result);
+    }
+
+    // ========== 按状态查询账户 ==========
+    @GetMapping("/accounts-by-status")
+    public ResponseEntity<?> getAccountByStatus(@RequestParam String status) {
+        if (status == null || status.isBlank()) {
+            return ResponseEntity.badRequest().body("status required");
+        }
+        AccountStatus accountStatus;
+        try {
+            accountStatus = AccountStatus.valueOf(status.trim().toUpperCase());
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body("invalid status");
+        }
+        Account account = accountStorage.getAccountByStatus(accountStatus);
+        if (account == null) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(account);
+    }
+
+    // ========== 删除已售账户 ==========
+    @PostMapping("/delete-sold")
+    public ResponseEntity<Map<String, Object>> deleteSoldAccounts() {
+        int deleted = accountStorage.deleteSoldAccounts();
+        Map<String, Object> result = new HashMap<>();
+        result.put("deleted", deleted);
+        return ResponseEntity.ok(result);
     }
 }
