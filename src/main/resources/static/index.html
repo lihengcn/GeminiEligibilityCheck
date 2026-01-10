@@ -4,581 +4,344 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>账号状态面板</title>
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap"
-    />
-    <!-- 引入 OTPAuth 库用于生成验证码 -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/otpauth/9.2.1/otpauth.umd.min.js"></script>
-    <!-- 引入 SheetJS 用于解析 Excel -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
       :root {
-        --bg: #f6f3ee;
-        --ink: #1e1c18;
-        --ink-soft: #6b645c;
-        --accent: #d95d39; /* 活力橙红 */
-        --accent-hover: #b54728;
-        --accent-2: #3d7d91; /* 稳重青蓝 */
-        --accent-2-hover: #2c5d6e;
+        --bg: #f8f9fa;
+        --ink: #111827;
+        --ink-soft: #6b7280;
+        --accent: #f97316;
+        --accent-hover: #ea580c;
+        --accent-subtle: #fff7ed;
         --card: #ffffff;
-        --card-border: rgba(30, 28, 24, 0.08);
-        --shadow: 0 4px 20px rgba(30, 28, 24, 0.04);
-        --line: rgba(30, 28, 24, 0.08);
-        --bg-grad: radial-gradient(circle at top left, #fff1e3 0%, #f6f3ee 40%, #eef6f6 100%);
+        --border: #e5e7eb;
+        --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
         --input-bg: #ffffff;
-        --status-idle-bg: #f0f0f0; --status-idle-text: #666;
-        --status-checking-bg: #fff4e5; --status-checking-text: #b76e00;
-        --status-qualified-bg: #e3fcec; --status-qualified-text: #1b663e;
-        --status-invalid-bg: #ffebeb; --status-invalid-text: #c92a2a;
-        --highlight: rgba(217, 93, 57, 0.05);
+        --scrollbar-thumb: rgba(17, 24, 39, 0.25);
+        --scrollbar-thumb-hover: rgba(17, 24, 39, 0.45);
+        --status-idle-bg: #f3f4f6; --status-idle-text: #4b5563;
+        --status-checking-bg: #fff7ed; --status-checking-text: #c2410c;
+        --status-qualified-bg: #ecfdf5; --status-qualified-text: #059669;
+        --status-invalid-bg: #fef2f2; --status-invalid-text: #dc2626;
+        --highlight: rgba(249, 115, 22, 0.08);
+        --radius: 8px;
       }
-
       html[data-theme="dark"] {
-        --bg: #111111;
-        --ink: #e0e0e0;
-        --ink-soft: #999999;
-        --accent: #ff7e5f;
-        --accent-hover: #ff9e85;
-        --accent-2: #5aaacc;
-        --accent-2-hover: #7bc0dd;
-        --card: #1c1c1c;
-        --card-border: rgba(255, 255, 255, 0.08);
-        --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-        --line: rgba(255, 255, 255, 0.08);
-        --bg-grad: radial-gradient(circle at top left, #2a1f1c 0%, #111111 40%, #151d21 100%);
-        --input-bg: #252525;
-        --status-idle-bg: #2d2d2d; --status-idle-text: #aaa;
-        --status-checking-bg: #3d2e1e; --status-checking-text: #ffad42;
-        --status-qualified-bg: #1c3628; --status-qualified-text: #6bdfa3;
-        --status-invalid-bg: #3d1f1f; --status-invalid-text: #ff8080;
-        --highlight: rgba(255, 126, 95, 0.1);
+        --bg: #0f172a;
+        --ink: #f3f4f6;
+        --ink-soft: #9ca3af;
+        --accent: #fb923c;
+        --accent-hover: #fdba74;
+        --accent-subtle: #431407;
+        --card: #1e293b;
+        --border: #334155;
+        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        --input-bg: #0f172a;
+        --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+        --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
+        --status-idle-bg: #374151; --status-idle-text: #9ca3af;
+        --status-checking-bg: #431407; --status-checking-text: #fb923c;
+        --status-qualified-bg: #064e3b; --status-qualified-text: #34d399;
+        --status-invalid-bg: #450a0a; --status-invalid-text: #f87171;
+        --highlight: rgba(251, 146, 60, 0.15);
       }
-
-      * {
-        box-sizing: border-box;
-      }
-
+      * { box-sizing: border-box; }
       body {
         margin: 0;
-        font-family: "Space Grotesk", system-ui, -apple-system, blinkmacsystemfont, "Segoe UI", roboto, sans-serif;
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
         color: var(--ink);
-        background: var(--bg-grad);
+        background: var(--bg);
         height: 100vh;
         overflow: hidden;
-        font-size: 14px;
+        font-size: 13px;
         -webkit-font-smoothing: antialiased;
       }
-
-      /* SVG Icon 基础样式 */
-      .icon {
-        width: 18px;
-        height: 18px;
-        stroke: currentColor;
-        stroke-width: 2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        fill: none;
-        vertical-align: text-bottom;
-        flex-shrink: 0;
-      }
-      
-      .icon-sm {
-        width: 14px;
-        height: 14px;
-        stroke-width: 2.5;
-        margin-right: 4px;
-        vertical-align: middle;
-      }
-
-      .col-token {
-        white-space: nowrap;
-        max-width: 160px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      /* 滚动条美化 */
       ::-webkit-scrollbar { width: 8px; height: 8px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: var(--ink-soft); opacity: 0.2; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: var(--ink); }
+      ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+      .icon { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .icon-sm { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 
       header {
-        padding: 20px 24px 10px;
-        height: 80px;
+        height: 64px;
+        padding: 0 24px;
         display: flex;
         align-items: center;
-      }
-
-      .header-row {
-        width: 100%;
-        display: flex;
-        align-items: center;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
         justify-content: space-between;
-        gap: 20px;
       }
-
-      .title {
-        margin: 0;
-        font-size: 24px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        background: linear-gradient(135deg, var(--ink) 0%, var(--ink-soft) 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-transform: uppercase;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-
-      .subtitle {
-        margin: 4px 0 0;
-        font-size: 13px;
-        color: var(--ink-soft);
-      }
+      .title-section { display: flex; align-items: center; gap: 12px; }
+      .title { margin: 0; font-size: 18px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; letter-spacing: -0.02em; }
+      .subtitle { margin: 0; color: var(--ink-soft); font-size: 12px; }
+      @media (min-width: 1024px) { .subtitle { display: block; border-left: 1px solid var(--border); padding-left: 12px; } }
 
       .layout {
         display: grid;
-        grid-template-columns: 340px 1fr;
-        gap: 20px;
-        padding: 0 24px 24px;
-        height: calc(100vh - 80px);
+        grid-template-columns: 320px 1fr;
+        height: calc(100vh - 64px);
+        background: var(--bg);
       }
-
-      .panel {
+      .panel-left {
         background: var(--card);
-        border-radius: 20px;
-        padding: 24px;
-        box-shadow: var(--shadow);
-        border: 1px solid var(--card-border);
+        border-right: 1px solid var(--border);
+        padding: 20px;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        position: relative;
+        gap: 20px;
       }
-
-      .input-panel { gap: 24px; }
+      .panel-right {
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
 
       h2 {
-        margin: 0 0 16px;
-        font-size: 14px;
-        font-weight: 700;
-        color: var(--ink-soft);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        border-bottom: 1px solid var(--line);
-        padding-bottom: 8px;
-      }
-
-      h2 .icon {
-        width: 20px;
-        height: 20px;
-        margin-top: -2px;
-        color: var(--accent);
-      }
-
-      .controls { display: flex; flex-direction: column; gap: 16px; }
-      .field { display: flex; flex-direction: column; gap: 8px; }
-
-      label {
+        margin: 0 0 12px;
         font-size: 12px;
         font-weight: 600;
         color: var(--ink-soft);
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.05em;
         display: flex;
         align-items: center;
         gap: 6px;
       }
-
-      input[type="text"], input[type="number"], input[type="file"], textarea, select {
-        background: var(--input-bg);
-        border: 1px solid var(--line);
-        color: var(--ink);
-        padding: 10px 12px;
-        border-radius: 8px;
-        font-family: inherit;
-        font-size: 13px;
+      .field { margin-bottom: 12px; }
+      label { display: block; font-size: 12px; font-weight: 500; color: var(--ink); margin-bottom: 6px; }
+      input, select, textarea {
         width: 100%;
-        transition: all 0.2s;
+        background: var(--input-bg);
+        border: 1px solid var(--border);
+        color: var(--ink);
+        padding: 8px 10px;
+        border-radius: var(--radius);
+        font-size: 13px;
+        font-family: inherit;
         outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
       }
-      input[type="file"] { padding: 8px; cursor: pointer; }
-      input:focus, textarea:focus, select:focus {
+      input[type="file"] { padding: 6px; font-size: 11px; }
+      input:focus, select:focus, textarea:focus {
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(217, 93, 57, 0.15);
+        box-shadow: 0 0 0 2px var(--highlight);
       }
+      ::placeholder { color: var(--ink-soft); opacity: 0.5; }
 
-      .radio-group { font-family: inherit; display: flex; flex-direction: column; gap: 8px; background: var(--bg); padding: 10px; border-radius: 8px; }
-      .radio-group label { display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; color: var(--ink); font-size: 13px; letter-spacing: normal; font-weight: 400; }
+      .card-box {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px;
+      }
+      .radio-group { display: flex; gap: 16px; align-items: center; padding: 4px 0; }
+      .radio-group label { margin: 0; font-weight: 400; display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--ink-soft); }
+      .radio-group input:checked + span { color: var(--ink); font-weight: 500; }
 
       button {
-        border: none;
         cursor: pointer;
-        font-family: inherit;
-        font-weight: 600;
+        border: 1px solid transparent;
+        border-radius: var(--radius);
+        padding: 8px 14px;
         font-size: 13px;
-        padding: 10px 16px;
-        border-radius: 8px;
-        transition: all 0.2s ease;
+        font-weight: 500;
+        transition: all 0.15s;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 6px;
-        width: auto;
+        line-height: 1;
       }
+      button:not(.secondary):not(.ghost):not(.cat-btn) { background: var(--accent); color: white; }
+      button:not(.secondary):not(.ghost):not(.cat-btn):hover { background: var(--accent-hover); }
+      button:not(.secondary):not(.ghost):not(.cat-btn):active { transform: translateY(1px); }
+      button.secondary { background: var(--input-bg); border-color: var(--border); color: var(--ink); }
+      button.secondary:hover { background: var(--bg); border-color: var(--ink-soft); }
+      button.ghost { background: transparent; color: var(--ink-soft); padding: 6px; }
+      button.ghost:hover { background: var(--bg); color: var(--ink); }
+      button.ghost.danger:hover { color: var(--status-invalid-text); background: var(--status-invalid-bg); }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      button.icon-btn { padding: 6px; width: 28px; height: 28px; border-radius: 6px; }
 
-      button:not(.secondary) {
-        background: var(--accent);
-        color: #fff;
-        box-shadow: 0 4px 10px rgba(217, 93, 57, 0.3);
+      .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-bottom: 0; }
+      .stat-item {
+        background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 10px; text-align: center; box-shadow: var(--shadow);
       }
-      button:not(.secondary):hover {
-        background: var(--accent-hover);
-        transform: translateY(-1px);
-        box-shadow: 0 6px 14px rgba(217, 93, 57, 0.4);
-      }
-      button.secondary {
-        background: var(--bg);
-        color: var(--ink);
-        border: 1px solid var(--line);
-      }
-      button.secondary:hover {
-        background: var(--line);
-        border-color: var(--ink-soft);
-      }
-      button:active { transform: translateY(1px) !important; }
+      .stat-label { font-size: 11px; color: var(--ink-soft); text-transform: uppercase; display: block; margin-bottom: 4px; }
+      .stat-val { font-size: 18px; font-weight: 700; color: var(--ink); line-height: 1; }
 
-      /* 卡片式分区 */
-      .mini-card {
-        background: var(--bg);
-        border-radius: 12px;
-        padding: 16px;
-        border: 1px solid var(--line);
-      }
-      .mini-card h3 {
-        margin: 0 0 8px;
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--accent-2);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .mini-card h3 .icon { width: 16px; height: 16px; }
-      .mini-card p { margin: 0 0 12px; font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
+      .table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--card); padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+      .cat-bar { display: flex; gap: 4px; }
+      .cat-btn { background: transparent; color: var(--ink-soft); padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+      .cat-btn[data-active="true"] { background: var(--accent-subtle); color: var(--accent); font-weight: 600; }
+      .cat-btn:hover:not([data-active="true"]) { background: var(--bg); color: var(--ink); }
+      .actions-grp { display: flex; gap: 4px; align-items: center; }
+      .divider { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
 
-      .code-box {
-        margin-top: 12px;
-        background: var(--card);
-        border: 2px dashed var(--line);
-        border-radius: 10px;
-        padding: 16px;
-        text-align: center;
-        transition: border-color 0.2s;
-      }
-      .code-box:hover { border-color: var(--accent); }
+      .table-container { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--shadow); }
+      .table-scroll { overflow: auto; flex: 1; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      thead th { position: sticky; top: 0; background: var(--bg); z-index: 10; text-align: left; padding: 10px 12px; font-weight: 600; color: var(--ink-soft); border-bottom: 1px solid var(--border); }
+      td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--ink); vertical-align: middle; }
+      tr:hover td { background: var(--highlight); }
+      tr.row-editing td { background: var(--status-checking-bg); }
 
-      .totp-display {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 28px;
-        font-weight: 700;
-        color: var(--accent);
-        letter-spacing: 4px;
-        cursor: pointer;
-        margin: 4px 0;
-        user-select: all;
-      }
-      .totp-display:active { transform: scale(0.96); }
-      .timer { font-size: 11px; color: var(--ink-soft); margin-bottom: 4px; }
+      th.col-email, td.col-email { width: 160px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      th.col-password, td.col-password { width: 100px; max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+      th.col-recovery, td.col-recovery { width: 140px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+      th.col-token, td.col-token { width: 140px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
 
-      /* 数据面板 */
-      .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px; margin-bottom: 20px; }
-      .summary-card {
-        background: var(--bg);
-        padding: 12px;
-        border-radius: 12px;
-        border: 1px solid var(--line);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-      }
-      .summary-card span { font-size: 11px; color: var(--ink-soft); text-transform: uppercase; margin-bottom: 4px; }
-      .summary-card strong { font-size: 20px; font-weight: 700; color: var(--ink); }
-
-      table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      thead { position: sticky; top: 0; background: var(--card); z-index: 10; box-shadow: 0 1px 0 var(--line); }
-      th { text-align: left; padding: 8px 6px; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
-      td { padding: 8px 6px; border-bottom: 1px solid var(--line); color: var(--ink); vertical-align: middle; }
-      th.col-email, td.col-email { width: 160px; }
-      th.col-recovery, td.col-recovery { width: 160px; }
-      th.col-password, td.col-password { width: 120px; }
-      th.col-token, td.col-token { width: 200px; }
-      tr:hover td { background: var(--bg); }
-      tr.row-editing td { background: var(--highlight); }
-
-      .copyable { cursor: pointer; transition: color 0.1s; }
-      .copyable:hover { color: var(--accent-2); text-decoration: underline; }
-
-      .status-chip { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+      .status-chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
       .status-chip.IDLE { background: var(--status-idle-bg); color: var(--status-idle-text); }
       .status-chip.CHECKING { background: var(--status-checking-bg); color: var(--status-checking-text); }
       .status-chip.QUALIFIED { background: var(--status-qualified-bg); color: var(--status-qualified-text); }
       .status-chip.INVALID { background: var(--status-invalid-bg); color: var(--status-invalid-text); }
-      .status-chip.PRODUCT { background: rgba(212, 175, 55, 0.18); color: #8a6a00; border: 1px solid rgba(212, 175, 55, 0.38); }
+      .status-chip.PRODUCT { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
 
-      .category-bar { display: flex; background: var(--bg); padding: 4px; border-radius: 10px; gap: 4px; margin: 10px 0 16px; width: fit-content; }
-      .cat-btn { background: transparent; border: none; color: var(--ink-soft); padding: 6px 16px; border-radius: 8px; font-size: 12px; box-shadow: none !important; }
-      .cat-btn:hover { color: var(--ink); background: rgba(0,0,0,0.05); }
-      .cat-btn[data-active="true"] { background: var(--card); color: var(--accent); font-weight: 700; box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important; }
+      .mono-text { font-family: "JetBrains Mono", monospace; letter-spacing: -0.5px; }
+      .copyable { cursor: pointer; transition: color 0.1s; }
+      .copyable:hover { color: var(--accent); }
+      #message { font-size: 11px; text-align: center; margin-top: 8px; min-height: 20px; }
 
-      .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
-      .toolbar-left { display: flex; gap: 8px; }
-      .lang-switch { display: flex; gap: 8px; }
-      .lang-switch button { padding: 8px 10px; font-size: 12px; border-radius: 6px; }
+      .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
+      .modal[data-open="true"] { display: flex; }
+      .modal-card { width: min(480px, calc(100vw - 32px)); background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 18px; }
+      .modal-card h3 { margin: 0 0 12px 0; font-size: 16px; }
+      .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
       @media (max-width: 900px) {
-        .layout { grid-template-columns: 1fr; height: auto; overflow: visible; }
-        .header-row { flex-direction: column; align-items: flex-start; }
-        .panel { height: auto; min-height: 500px; }
-        body { overflow-y: auto; height: auto; }
+        .layout { grid-template-columns: 1fr; height: auto; display: block; }
+        .panel-left { height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+        .table-toolbar { flex-direction: column; align-items: stretch; }
+        .cat-bar { overflow-x: auto; padding-bottom: 4px; }
+        body { overflow-y: auto; }
       }
-
-      #message { margin-top: 10px; padding: 10px; border-radius: 8px; font-size: 12px; text-align: center; min-height: 20px; }
-
-      .modal {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.35);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-        backdrop-filter: blur(2px);
-      }
-
-      .modal[data-open="true"] {
-        display: flex;
-      }
-
-      .modal-card {
-        width: min(520px, calc(100vw - 32px));
-        background: var(--card);
-        border: 1px solid var(--card-border);
-        border-radius: 16px;
-        box-shadow: var(--shadow);
-        padding: 18px;
-      }
-
-      .modal-card h3 {
-        margin: 0 0 12px 0;
-        font-size: 16px;
-      }
-
-      .modal-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-        margin-top: 12px;
-      }
-      
-      /* Theme Toggle Icon Specifics */
-      #themeToggle svg { width: 18px; height: 18px; }
     </style>
   </head>
   <body>
-    <!-- SVG Definition Block (Used for reference or re-use if needed, but we use inline for simplicity) -->
-    
     <header>
-      <div class="header-row">
+      <div class="title-section">
+        <svg class="icon" style="color:var(--accent);" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
         <div>
-          <h1 class="title">
-            <svg class="icon" style="width:28px;height:28px;color:var(--accent);" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
-            <span data-i18n="title">Account Pulse</span>
-          </h1>
-          <p class="subtitle" data-i18n="subtitle">导入账号 txt/Excel 文件，实时查看状态变化。</p>
+          <h1 class="title"><span data-i18n="title">Account Pulse</span></h1>
+          <p class="subtitle" data-i18n="subtitle">API Status Monitor</p>
         </div>
-        <div class="lang-switch">
-          <button id="langZh" class="secondary" data-lang="zh">中文</button>
-          <button id="langEn" class="secondary" data-lang="en">EN</button>
-          <button id="themeToggle" class="secondary" type="button" aria-label="Toggle Theme">
-            <!-- Icon is injected by JS -->
-          </button>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button id="themeToggle" class="secondary icon-btn" title="Switch Theme"></button>
+        <div style="display:flex; border:1px solid var(--border); border-radius: var(--radius); padding:2px;">
+          <button id="langZh" class="ghost" style="padding:4px 8px; font-size:11px;" data-lang="zh">CN</button>
+          <button id="langEn" class="ghost" style="padding:4px 8px; font-size:11px;" data-lang="en">EN</button>
         </div>
       </div>
     </header>
 
     <main class="layout">
-      <!-- 左侧控制面板 -->
-      <section class="panel input-panel">
+      <section class="panel-left">
+        <!-- Import -->
         <div>
-          <h2 data-i18n="import_title">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m16 16-4-4-4 4"></path></svg>
-            导入与刷新
-          </h2>
-          <div class="controls">
+          <h2><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> <span data-i18n="import_title">导入与刷新</span></h2>
+          <div class="card-box">
             <div class="field">
-              <label for="file">
-                <span data-i18n="file_label">TXT / Excel 文件</span>
-              </label>
               <input id="file" type="file" accept=".txt,.xlsx,.xls" multiple />
-              <div id="fileHint" style="font-size: 12px; color: var(--ink-soft); margin-top: 4px;"></div>
+              <div id="fileHint" style="font-size: 11px; color: var(--ink-soft); text-align:right; margin-top:4px;"></div>
             </div>
-
             <div class="field">
-              <label for="importTemplate" data-i18n="template_label">导入模板</label>
+              <label for="importTemplate" data-i18n="template_label" style="font-size:11px; color:var(--ink-soft);">导入模板</label>
               <select id="importTemplate">
                 <option value="AUTO" data-i18n="template_auto">自动识别</option>
-                <option value="TOKEN" data-i18n="template_token">账号;密码;2FA 密钥;辅助邮箱</option>
-                <option value="RECOVERY_EMAIL" data-i18n="template_recovery">账号;密码;辅助邮箱;2FA 密钥</option>
+                <option value="TOKEN" data-i18n="template_token">账号;密码;2FA;辅助邮箱</option>
+                <option value="RECOVERY_EMAIL" data-i18n="template_recovery">账号;密码;辅助邮箱;2FA</option>
               </select>
-              <div id="templateHint" style="font-size: 11px; color: var(--ink-soft);"></div>
+              <div id="templateHint" style="font-size: 10px; color: var(--ink-soft); margin-top:2px;"></div>
             </div>
-            
-            <button id="importBtn" style="width: 100%;">
-              <span data-i18n="import_btn">开始导入</span>
-            </button>
+            <button id="importBtn" style="width: 100%;"><span data-i18n="import_btn">开始导入</span></button>
           </div>
-        </div>
-
-        <!-- 2FA 工具 -->
-        <div class="mini-card">
-          <h3>
-            <svg class="icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
-            <span data-i18n="twofa_title">二步验证 (2FA)</span>
-          </h3>
-          <p data-i18n="twofa_desc">输入密钥，自动计算验证码。</p>
-          
-          <div class="field">
-            <label for="twofaSecret">
-              <span data-i18n="twofa_secret_label">密钥 (Secret Key)</span>
-            </label>
-            <input
-              id="twofaSecret"
-              placeholder="例如：JBSWY3DPEHPK3PXP"
-              autocomplete="off"
-              style="font-family: 'JetBrains Mono', monospace;"
-            />
-          </div>
-
-          <div class="code-box">
-            <div class="timer"><span data-i18n="twofa_timer">更新倒计时</span>：<span id="twofaCountdown">30</span>s</div>
-            <div class="totp-display" id="totpCode" title="点击复制">--- ---</div>
-            <div id="twofaStatus" style="font-size: 11px; color:var(--ink-soft); margin-top:4px;">点击验证码复制</div>
-          </div>
-        </div>
-
-        <!-- OneKey 工具 -->
-        <div class="mini-card" style="border-left: 3px solid var(--accent-2);">
-          <h3>
-            <svg class="icon" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-            OneKey Batch
-          </h3>
-          <div class="field">
-            <textarea
-              id="onekeyIds"
-              rows="3"
-              placeholder="verificationId"
-              style="resize: none; margin-top:8px;"
-            ></textarea>
-            <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
-              <input
-                id="onekeyProgramId"
-                type="text"
-                placeholder="programId (可选)"
-                style="flex: 1;"
-              />
-              <label style="display:flex; align-items:center; gap:4px; margin:0; cursor:pointer;">
-                <input id="onekeyUseLucky" type="checkbox" />
-                <span data-i18n="onekey_useLucky" style="font-size:11px; text-transform:none;">Lucky</span>
-              </label>
+          <div style="margin-top:12px; display:flex; gap:8px;">
+            <div style="flex:1; display:flex; gap:0;">
+              <input id="refreshSeconds" type="number" min="1" value="5" style="border-top-right-radius:0; border-bottom-right-radius:0; border-right:none;" />
+              <button id="applyRefresh" class="secondary" style="border-top-left-radius:0; border-bottom-left-radius:0;" data-i18n="apply_refresh">Set</button>
             </div>
-            <button id="onekeyBatchBtn" class="secondary" style="margin-top:8px; width:100%;" data-i18n="onekey_btn">批量验证</button>
-            <div id="onekeyResult" style="margin-top:8px; font-size:11px; color:var(--ink-soft); word-break:break-all;"></div>
+            <button id="toggleAutoRefresh" class="secondary" style="padding:0 12px;"><span data-i18n="auto_refresh_on">Auto: On</span></button>
           </div>
-        </div>
-
-        <!-- 刷新控制 -->
-        <div class="controls">
-          <div class="field" style="flex-direction: row; gap: 8px; align-items: flex-end;">
-            <div style="flex:1;">
-              <label for="refreshSeconds" data-i18n="refresh_label">自动刷新 (秒)</label>
-              <input id="refreshSeconds" type="number" min="1" value="5" />
-            </div>
-            <button id="applyRefresh" class="secondary" style="height: 38px;">
-              <span data-i18n="apply_refresh">设置</span>
-            </button>
-          </div>
-          
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-            <button id="toggleAutoRefresh" class="secondary" data-active="true">
-              <span data-i18n="auto_refresh_on">自动刷新: 开</span>
-            </button>
-            <button id="manualRefresh" class="secondary">
-              <span data-i18n="manual_refresh">刷新</span>
-            </button>
-            <button id="resetChecking" class="secondary">
-              <span data-i18n="reset_checking">重置</span>
-            </button>
+          <div style="margin-top:8px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+            <button id="manualRefresh" class="secondary"><span data-i18n="manual_refresh">刷新</span></button>
+            <button id="resetChecking" class="secondary"><span data-i18n="reset_checking">重置</span></button>
           </div>
           <div id="message"></div>
         </div>
-      </section>
 
-      <!-- 右侧数据展示 -->
-      <section class="panel">
-        <div class="toolbar">
-          <h2 style="margin:0;">
-            <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-            <span data-i18n="status_title">账号状态</span>
-          </h2>
-          <button id="toggleSheeridView" class="secondary">
-            <span data-i18n="view_sheerid">切换视图</span>
-          </button>
+        <!-- 2FA Tool -->
+        <div>
+          <h2><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg> <span data-i18n="twofa_title">2FA 计算器</span></h2>
+          <div class="card-box" style="border-left: 3px solid var(--ink-soft);">
+            <input id="twofaSecret" placeholder="Paste Secret Key" style="font-family:'JetBrains Mono'; margin-bottom:8px;"/>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div style="font-size:10px; color:var(--ink-soft);"><span data-i18n="twofa_timer">Refresh</span> <span id="twofaCountdown" style="font-weight:700;">30</span>s</div>
+              <div id="totpCode" class="mono-text" style="font-size:18px; font-weight:700; color:var(--accent); cursor:pointer;">--- ---</div>
+            </div>
+            <div id="twofaStatus" style="text-align:right; font-size:10px; color:var(--ink-soft); margin-top:2px;">Click to copy</div>
+          </div>
         </div>
 
-        <div class="summary" id="summary"></div>
-
-        <div id="accountsView" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
-          <div class="toolbar">
-            <div class="category-bar" id="categoryBar">
-              <button class="cat-btn" data-cat="ALL" data-active="true" data-i18n="cat_all">全部</button>
-              <button class="cat-btn" data-cat="QUALIFIED" data-i18n="cat_qualified">资质号</button>
-              <button class="cat-btn" data-cat="INVALID" data-i18n="cat_invalid">普通号</button>
-              <button class="cat-btn" data-cat="FINISHED" data-i18n="cat_finished">成品号</button>
-              <button class="cat-btn" data-cat="IDLE" data-i18n="cat_idle">IDLE</button>
+        <!-- OneKey Tool -->
+        <div>
+          <h2><svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> OneKey Batch</h2>
+          <div class="card-box" style="border-left: 3px solid var(--accent-subtle);">
+            <textarea id="onekeyIds" rows="2" placeholder="verificationId (one per line)" style="resize:none; margin-bottom:8px;"></textarea>
+            <div style="display:flex; gap:6px; margin-bottom:8px;">
+              <input id="onekeyProgramId" placeholder="programId" style="flex:1; font-size:11px;" />
+              <label style="font-size:11px; display:flex; align-items:center; cursor:pointer;"><input id="onekeyUseLucky" type="checkbox"/> Lucky</label>
             </div>
-            
-            <div class="toolbar-left" style="margin-left:auto;">
-               <div id="selectedCount" style="align-self:center; font-size:12px; color:var(--ink-soft); margin-right:8px;"></div>
-               <button id="exportSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="export_selected">导出选中</button>
-               <button id="resetSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="reset_selected">重置选中</button>
-               <button id="setProductSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="set_product_selected">设为成品号</button>
-               <button id="deleteSelectedBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="delete_selected">删除选中</button>
-               <button id="clearSelectionBtn" class="secondary" style="padding:6px 10px; font-size:12px;" data-i18n="clear_select">清空</button>
-            </div>
+            <button id="onekeyBatchBtn" class="secondary" style="width:100%; border-style:dashed;" data-i18n="onekey_btn">Verify</button>
+            <div id="onekeyResult" style="margin-top:6px; font-size:10px; color:var(--ink-soft); word-break:break-all;"></div>
           </div>
+        </div>
+      </section>
 
-        <div style="flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; position:relative;">
+      <section class="panel-right">
+        <div id="summary" class="stats-grid"></div>
+        <div class="table-toolbar">
+          <div class="cat-bar" id="categoryBar">
+            <button class="cat-btn" data-cat="ALL" data-active="true" data-i18n="cat_all">全部</button>
+            <button class="cat-btn" data-cat="QUALIFIED" data-i18n="cat_qualified">资质</button>
+            <button class="cat-btn" data-cat="INVALID" data-i18n="cat_invalid">无效</button>
+            <button class="cat-btn" data-cat="FINISHED" data-i18n="cat_finished">成品</button>
+            <button class="cat-btn" data-cat="IDLE" data-i18n="cat_idle">IDLE</button>
+          </div>
+          <div class="actions-grp">
+            <span id="selectedCount" style="font-size:11px; color:var(--ink-soft); margin-right:4px;"></span>
+            <button id="deleteSelectedBtn" class="ghost icon-btn" title="Delete Selected"><svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            <button id="exportSelectedBtn" class="ghost icon-btn" title="Export Selected"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>
+            <button id="resetSelectedBtn" class="ghost icon-btn" title="Reset Selected"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button>
+            <button id="setProductSelectedBtn" class="ghost icon-btn" title="Set to Product"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></button>
+            <div class="divider"></div>
+            <button id="clearSelectionBtn" class="ghost icon-btn" title="Clear Selection"><svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg></button>
+            <div class="divider"></div>
+            <button id="toggleSheeridView" class="secondary" style="height:28px; padding:0 10px; font-size:11px;"><span data-i18n="view_sheerid">切换视图</span></button>
+          </div>
+        </div>
+
+        <div id="accountsView" class="table-container">
+          <div class="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th style="width: 40px; text-align: center;">
-                    <input id="selectAll" type="checkbox" title="Select all" />
-                  </th>
+                  <th style="width: 40px; text-align: center;"><input id="selectAll" type="checkbox" /></th>
                   <th class="col-email" data-i18n="th_email">账号</th>
                   <th class="col-password" data-i18n="th_password">密码</th>
                   <th class="col-recovery" data-i18n="th_recovery_email">辅助邮箱</th>
-                  <th class="col-token" data-i18n="th_2fa">2FA 密钥</th>
-                  <th data-i18n="th_status">状态</th>
-                  <th data-i18n="th_sold">出售</th>
-                  <th data-i18n="th_actions" style="text-align: right;">操作</th>
+                  <th class="col-token" data-i18n="th_2fa">2FA</th>
+                  <th data-i18n="th_status" style="width:80px;">状态</th>
+                  <th data-i18n="th_sold" style="text-align:center; width:50px;">售出</th>
+                  <th style="text-align: right; width:100px;"></th>
                 </tr>
               </thead>
               <tbody id="tableBody"></tbody>
@@ -586,76 +349,47 @@
           </div>
         </div>
 
-        <div id="sheeridView" style="display:none; flex:1; overflow-y:auto;">
-          <div style="background:var(--bg); padding:10px; border-radius:8px; margin-bottom:12px; color: var(--ink-soft); font-size: 13px;" data-i18n="sheerid_desc">
-            只显示已资质（QUALIFIED）且有认证链接的账号。
+        <div id="sheeridView" class="table-container" style="display:none;">
+          <div style="padding:12px; background:var(--status-checking-bg); font-size:12px; border-bottom:1px solid var(--border);" data-i18n="sheerid_desc">Showing QUALIFIED accounts with links only.</div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="th_email">账号</th>
+                  <th data-i18n="th_sheerid">认证链接</th>
+                  <th data-i18n="th_verify_status">验证状态</th>
+                  <th style="text-align:right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="sheeridTableBody"></tbody>
+            </table>
           </div>
-          <table style="border: 1px solid var(--line); border-radius: 12px; overflow:hidden;">
-            <thead>
-              <tr>
-                <th data-i18n="th_email">账号</th>
-                <th data-i18n="th_sheerid">认证链接</th>
-                <th data-i18n="th_verify_status">验证状态</th>
-                <th data-i18n="th_actions" style="text-align:right;">操作</th>
-              </tr>
-            </thead>
-            <tbody id="sheeridTableBody"></tbody>
-          </table>
         </div>
       </section>
     </main>
 
-    <div id="editModal" class="modal" data-open="false" aria-hidden="true">
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
-        <h3 id="editModalTitle" data-i18n="edit_title">编辑账号</h3>
-        <div class="field">
-          <label for="editEmail" data-i18n="edit_email">账号</label>
-          <input id="editEmail" type="text" />
+    <div id="editModal" class="modal" data-open="false">
+      <div class="modal-card">
+        <h3 data-i18n="edit_title">编辑账号</h3>
+        <div class="field"><label for="editEmail" data-i18n="edit_email">账号</label><input id="editEmail" type="text" /></div>
+        <div class="field"><label for="editPassword" data-i18n="edit_password">密码</label><input id="editPassword" type="text" /></div>
+        <div class="field"><label for="editRecovery" data-i18n="edit_recovery_email">辅助邮箱</label><input id="editRecovery" type="text" /></div>
+        <div class="field"><label for="editToken" data-i18n="edit_2fa">2FA 密钥</label><input id="editToken" type="text" /></div>
+        <div class="field"><label for="editStatus" data-i18n="edit_status">状态</label>
+          <select id="editStatus"><option value="IDLE">IDLE</option><option value="CHECKING">CHECKING</option><option value="QUALIFIED">QUALIFIED</option><option value="INVALID">INVALID</option><option value="PRODUCT">PRODUCT</option></select>
         </div>
-        <div class="field">
-          <label for="editPassword" data-i18n="edit_password">密码</label>
-          <input id="editPassword" type="text" />
-        </div>
-        <div class="field">
-          <label for="editRecovery" data-i18n="edit_recovery_email">辅助邮箱</label>
-          <input id="editRecovery" type="text" />
-        </div>
-        <div class="field">
-          <label for="editToken" data-i18n="edit_2fa">2FA 密钥</label>
-          <input id="editToken" type="text" />
-        </div>
-        <div class="field">
-          <label for="editStatus" data-i18n="edit_status">状态</label>
-          <select id="editStatus">
-            <option value="IDLE">IDLE</option>
-            <option value="CHECKING">CHECKING</option>
-            <option value="QUALIFIED">QUALIFIED</option>
-            <option value="INVALID">INVALID</option>
-            <option value="PRODUCT">PRODUCT</option>
-          </select>
-        </div>
-        <div class="field">
-          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-            <input id="editSold" type="checkbox" />
-            <span data-i18n="edit_sold">已出售</span>
-          </label>
-        </div>
+        <div class="field"><label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input id="editSold" type="checkbox" /><span data-i18n="edit_sold">已出售</span></label></div>
         <div class="modal-actions">
-          <button id="editCancelBtn" class="secondary" type="button" data-i18n="edit_cancel">取消</button>
-          <button id="editSaveBtn" type="button" data-i18n="edit_save">保存</button>
+          <button id="editCancelBtn" class="secondary" data-i18n="edit_cancel">取消</button>
+          <button id="editSaveBtn" data-i18n="edit_save">保存</button>
         </div>
       </div>
     </div>
 
     <script>
-      /* --- Icons Definitions (Inline SVG Strings for JS Injection) --- */
       const ICONS = {
         sun: `<svg viewBox="0 0 24 24" class="icon"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`,
-        moon: `<svg viewBox="0 0 24 24" class="icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`,
-        export: `<svg class="icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
-        trash: `<svg class="icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`,
-        check: `<svg class="icon-sm" viewBox="0 0 24 24" style="margin:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
-        x: `<svg class="icon-sm" viewBox="0 0 24 24" style="margin:0;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`
+        moon: `<svg viewBox="0 0 24 24" class="icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`
       };
 
       const messageEl = document.getElementById("message");
@@ -682,7 +416,7 @@
       const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
       const clearSelectionBtn = document.getElementById("clearSelectionBtn");
       const themeToggleBtn = document.getElementById("themeToggle");
-      const langButtons = document.querySelectorAll(".lang-switch button[data-lang]");
+      const langButtons = document.querySelectorAll("button[data-lang]");
       const categoryBar = document.getElementById("categoryBar");
       const editModal = document.getElementById("editModal");
       const editEmailInput = document.getElementById("editEmail");
@@ -698,293 +432,121 @@
       let lastAccounts = [];
       const selectedEmails = new Set();
       let currentCategory = "ALL";
+      let autoRefreshEnabled = true;
       const excelExtensions = [".xlsx", ".xls"];
 
       const i18n = {
         zh: {
-          page_title: "账号状态面板",
-          title: "Account Pulse",
-          subtitle: "导入账号 TXT/Excel 文件，监控 API 状态变化。",
-          import_title: "导入与刷新",
-          file_label: "TXT / Excel 文件",
-          file_hint_none: "未选择文件（支持多选 .txt/.xlsx/.xls）",
-          file_hint_count: (n) => `已选择 ${n} 个文件`,
-          template_label: "导入模板",
-          template_auto: "自动识别",
-          template_token: "账号;密码;2FA 密钥;辅助邮箱",
-          template_recovery: "账号;密码;辅助邮箱;2FA 密钥",
-          template_hint_auto: "自动识别：3列第3列像邮箱视为辅助邮箱；4列按邮箱列判断顺序。",
-          template_hint_token: "模板：账号;密码;2FA 密钥;辅助邮箱（最后一列可为空）。",
-          template_hint_recovery: "模板：账号;密码;辅助邮箱;2FA 密钥（最后一列可为空）。",
+          page_title: "账号状态面板", title: "Account Pulse", subtitle: "导入账号，监控 API 状态变化",
+          import_title: "导入与刷新", file_label: "TXT / Excel 文件",
+          file_hint_none: "未选择文件", file_hint_count: (n) => `已选择 ${n} 个文件`,
+          template_label: "导入模板", template_auto: "自动识别", template_token: "账号;密码;2FA;辅助邮箱", template_recovery: "账号;密码;辅助邮箱;2FA",
+          template_hint_auto: "自动识别列顺序", template_hint_token: "账号;密码;2FA;辅助邮箱", template_hint_recovery: "账号;密码;辅助邮箱;2FA",
           import_btn: "开始导入",
-          cat_all: "全部",
-          cat_qualified: "资质号",
-          cat_invalid: "普通号",
-          cat_finished: "成品号",
-          cat_idle: "空闲",
-          onekey_title: "OneKey 批量验证",
-          onekey_btn: "批量验证",
-          onekey_useLucky: "Lucky",
-          msg_onekey_too_many: "最多支持 5 个 verificationId",
-          msg_onekey_missing: "请填写 verificationId (每行一个)",
-          msg_onekey_running: "请求中...",
-          msg_onekey_fail: "请求失败",
-          msg_onekey_disabled: "不可用",
-          view_sheerid: "查看链接",
-          view_accounts: "查看列表",
-          sheerid_desc: "仅显示已通过资质（QUALIFIED）的认证链接。",
-          twofa_title: "二步验证 (2FA)",
-          twofa_desc: "输入密钥，实时生成验证码。",
-          twofa_secret_label: "密钥 (Secret Key)",
-          twofa_timer: "刷新",
-          twofa_note: "点击验证码即可复制",
-          refresh_label: "自动刷新 (秒)",
-          apply_refresh: "设置",
-          manual_refresh: "刷新",
-          auto_refresh_on: "自动: 开",
-          auto_refresh_off: "自动: 关",
-          reset_checking: "重置",
-          status_title: "账号状态",
-          th_email: "账号",
-          th_password: "密码",
-          th_recovery_email: "恢复邮箱",
-          th_2fa: "2FA 密钥",
-          th_sheerid: "认证链接",
-          th_verify_status: "验证状态",
-          verify_btn: "验证",
-          th_status: "状态",
-          th_sold: "出售",
-          th_finished: "成品",
-          th_actions: "操作",
-          sold_yes: "已售",
-          sold_no: "未售",
-          finished_yes: "是",
-          finished_no: "否",
-          summary_total: "总数",
-          summary_idle: "空闲",
-          summary_checking: "检查中",
-          summary_qualified: "合格",
-          summary_invalid: "无效",
-          summary_qualified_normal: "资质号",
-          summary_invalid_normal: "普通号",
-          summary_finished_total: "成品号",
-          status_finished_qualified: "成品",
-          status_finished_invalid: "成品-无效",
-          status_finished_suffix: "(成品)",
+          cat_all: "全部", cat_qualified: "资质号", cat_invalid: "普通号", cat_finished: "成品号", cat_idle: "空闲",
+          onekey_btn: "批量验证", msg_onekey_too_many: "最多5个ID", msg_onekey_missing: "请填写ID", msg_onekey_running: "请求中...", msg_onekey_fail: "请求失败",
+          view_sheerid: "查看链接", view_accounts: "查看列表", sheerid_desc: "仅显示已资质且有链接的账号",
+          twofa_title: "2FA 计算器", twofa_timer: "刷新", twofa_note: "点击复制",
+          refresh_label: "自动刷新(秒)", apply_refresh: "设置", manual_refresh: "刷新",
+          auto_refresh_on: "自动: 开", auto_refresh_off: "自动: 关", reset_checking: "重置",
+          status_title: "账号状态", th_email: "账号", th_password: "密码", th_recovery_email: "辅助邮箱", th_2fa: "2FA", th_sheerid: "认证链接", th_verify_status: "验证状态", th_status: "状态", th_sold: "售出", th_actions: "操作",
+          sold_yes: "已售", sold_no: "-", verify_btn: "验证",
+          summary_total: "总数", summary_idle: "空闲", summary_checking: "检查中", summary_qualified: "合格", summary_invalid: "无效", summary_qualified_normal: "资质号", summary_invalid_normal: "普通号", summary_finished_total: "成品号",
           status_product: "成品号",
-          msg_refreshed: "数据已更新",
-          msg_refresh_fail: "刷新失败",
-          msg_file_missing: "请先选择文件",
-          msg_import_done: (added, updated, skipped) =>
-            `成功：新增 ${added}，更新 ${updated}，跳过 ${skipped}`,
-          msg_import_fail: "导入失败，请检查文件",
-          msg_refresh_set: (seconds) => `刷新间隔: ${seconds} 秒`,
-          msg_reset_done: (count) => `已重置 ${count} 个账号`,
-          msg_reset_fail: "重置失败",
-          msg_reset_confirm: "确认重置所有检查中状态？",
-          msg_sold_updated: "出售状态已更新",
-          msg_sold_update_fail: "更新失败",
-          delete_btn: "删除",
-          msg_delete_confirm: "确认永久删除此账号？",
-          msg_delete_done: "账号已删除",
-          msg_delete_fail: "删除失败",
-          msg_sheerid_delete_confirm: "确认删除该账号的认证链接？",
-          msg_sheerid_delete_done: "认证链接已删除",
-          msg_sheerid_delete_fail: "删除认证链接失败",
-          edit_hint: "双击行可编辑内容",
-          edit_btn: "编辑",
-          edit_title: "编辑账号",
-          edit_email: "账号",
-          edit_password: "密码",
-          edit_recovery_email: "辅助邮箱",
-          edit_2fa: "2FA 密钥",
-          edit_status: "状态",
-          edit_sold: "已出售",
-          edit_save: "保存",
-          edit_cancel: "取消",
-          msg_edit_saved: "已保存",
-          msg_edit_save_fail: "保存失败",
-          export_btn: "导出",
-          msg_export_done: "已复制到剪贴板",
-          msg_export_fail: "复制失败",
-          export_selected: "导出选中",
-          export_labels: {
-            email: "账号",
-            password: "密码",
-            recoveryEmail: "辅助邮箱",
-            authenticatorToken: "2FA秘钥",
-          },
-          reset_selected: "重置选中",
-          set_product_selected: "设为成品号",
-          delete_selected: "删除选中",
-          clear_select: "清空",
-          selected_count: (n) => `${n} 已选`,
-          msg_export_none: "未选择账号",
-          msg_reset_selected_none: "未选择账号",
-          msg_reset_selected_confirm: (n) => `确认重置选中的 ${n} 个账号为 IDLE？`,
-          msg_reset_selected_done: (n) => `已重置 ${n} 个账号`,
-          msg_reset_selected_fail: "批量重置失败",
-          msg_set_product_selected_none: "未选择账号",
-          msg_set_product_selected_confirm: (n) => `确认将选中的 ${n} 个账号设为 成品号？`,
-          msg_set_product_selected_done: (n) => `已设置 ${n} 个账号为 成品号`,
-          msg_set_product_selected_fail: "批量设置失败",
-          msg_delete_selected_none: "未选择账号",
-          msg_delete_selected_confirm: (n) => `确认删除选中的 ${n} 个账号？`,
-          msg_delete_selected_done: (n) => `已删除 ${n} 个账号`,
-          msg_delete_selected_fail: "批量删除失败",
-          msg_status_updated: "状态已更新",
-          msg_status_update_fail: "更新状态失败",
-          msg_cell_copied: "已复制",
-          msg_cell_copy_fail: "复制失败",
-          theme_dark: "🌙",
-          theme_light: "☀️",
-          empty_table: "暂无数据",
-          empty_sheerid: "暂无链接",
+          msg_refreshed: "已更新", msg_refresh_fail: "刷新失败", msg_file_missing: "请先选择文件",
+          msg_import_done: (a, u, s) => `新增${a} 更新${u} 跳过${s}`, msg_import_fail: "导入失败",
+          msg_refresh_set: (s) => `刷新间隔: ${s}秒`, msg_reset_done: (c) => `已重置${c}个`, msg_reset_fail: "重置失败", msg_reset_confirm: "确认重置所有检查中状态？",
+          msg_sold_updated: "已更新", msg_sold_update_fail: "更新失败",
+          delete_btn: "删", msg_delete_confirm: "确认删除？", msg_delete_done: "已删除", msg_delete_fail: "删除失败",
+          msg_sheerid_delete_confirm: "确认删除链接？", msg_sheerid_delete_done: "已删除", msg_sheerid_delete_fail: "删除失败",
+          edit_btn: "编辑", edit_title: "编辑账号", edit_email: "账号", edit_password: "密码", edit_recovery_email: "辅助邮箱", edit_2fa: "2FA", edit_status: "状态", edit_sold: "已出售", edit_save: "保存", edit_cancel: "取消",
+          msg_edit_saved: "已保存", msg_edit_save_fail: "保存失败",
+          export_btn: "导", msg_export_done: "已复制", msg_export_fail: "复制失败",
+          export_labels: { email: "账号", password: "密码", recoveryEmail: "辅助邮箱", authenticatorToken: "2FA秘钥" },
+          selected_count: (n) => `${n}已选`, msg_export_none: "未选择",
+          msg_reset_selected_none: "未选择", msg_reset_selected_confirm: (n) => `确认重置${n}个为IDLE？`, msg_reset_selected_done: (n) => `已重置${n}个`, msg_reset_selected_fail: "失败",
+          msg_set_product_selected_none: "未选择", msg_set_product_selected_confirm: (n) => `确认设置${n}个为成品号？`, msg_set_product_selected_done: (n) => `已设置${n}个`, msg_set_product_selected_fail: "失败",
+          msg_delete_selected_none: "未选择", msg_delete_selected_confirm: (n) => `确认删除${n}个？`, msg_delete_selected_done: (n) => `已删除${n}个`, msg_delete_selected_fail: "失败",
+          msg_cell_copied: "已复制", msg_cell_copy_fail: "复制失败",
+          empty_table: "暂无数据", empty_sheerid: "暂无链接"
         },
         en: {
-          page_title: "Account Pulse",
-          title: "Account Pulse",
-          subtitle: "Import TXT/Excel accounts and track status changes regarding APIs.",
-          import_title: "Import & Refresh",
-          file_label: "TXT / Excel File",
-          file_hint_none: "No file selected (.txt/.xlsx/.xls)",
-          file_hint_count: (n) => `${n} files selected`,
-          template_label: "Import Template",
-          template_auto: "Auto Detect",
-          template_token: "Account;Password;2FA Token;Recovery Email",
-          template_recovery: "Account;Password;Recovery Email;2FA Token",
-          template_hint_auto: "Auto: 3 columns -> column 3 email means recovery; 4 columns -> detect email column.",
-          template_hint_token: "Template: account;password;2FA token;recovery email (last can be empty).",
-          template_hint_recovery: "Template: account;password;recovery email;2FA token (last can be empty).",
+          page_title: "Account Pulse", title: "Account Pulse", subtitle: "Import accounts and track API status",
+          import_title: "Import & Refresh", file_label: "TXT / Excel File",
+          file_hint_none: "No file selected", file_hint_count: (n) => `${n} files selected`,
+          template_label: "Import Template", template_auto: "Auto Detect", template_token: "Account;Password;2FA;Recovery", template_recovery: "Account;Password;Recovery;2FA",
+          template_hint_auto: "Auto detect column order", template_hint_token: "Account;Password;2FA;Recovery", template_hint_recovery: "Account;Password;Recovery;2FA",
           import_btn: "Start Import",
-          cat_all: "All",
-          cat_qualified: "Qualified",
-          cat_invalid: "Normal",
-          cat_finished: "Finished",
-          cat_idle: "Idle",
-          onekey_title: "OneKey Batch",
-          onekey_btn: "Batch Verify",
-          onekey_useLucky: "Lucky",
-          msg_onekey_too_many: "Max 5 IDs",
-          msg_onekey_missing: "Enter IDs first",
-          msg_onekey_running: "Processing...",
-          msg_onekey_fail: "Request Failed",
-          msg_onekey_disabled: "Disabled",
-          view_sheerid: "Links View",
-          view_accounts: "List View",
-          sheerid_desc: "Showing only QUALIFIED accounts with SheerID links.",
-          twofa_title: "2FA Generator",
-          twofa_desc: "Enter Secret Key to generate code.",
-          twofa_secret_label: "Secret Key",
-          twofa_timer: "Refresh",
-          twofa_note: "Click code to copy",
-          refresh_label: "Refresh Rate (s)",
-          apply_refresh: "Set",
-          manual_refresh: "Refresh",
-          auto_refresh_on: "Auto: On",
-          auto_refresh_off: "Auto: Off",
-          reset_checking: "Reset",
-          status_title: "Status",
-          th_email: "Account",
-          th_password: "Password",
-          th_recovery_email: "Recovery Email",
-          th_2fa: "2FA Token",
-          th_sheerid: "SheerID Link",
-          th_verify_status: "Verify Status",
-          verify_btn: "Verify",
-          th_status: "Status",
-          th_sold: "Sold",
-          th_finished: "Finished",
-          th_actions: "Actions",
-          sold_yes: "Yes",
-          sold_no: "No",
-          finished_yes: "Yes",
-          finished_no: "No",
-          summary_total: "Total",
-          summary_idle: "Idle",
-          summary_checking: "Checking",
-          summary_qualified: "Qualified",
-          summary_invalid: "Invalid",
-          summary_qualified_normal: "Qualified",
-          summary_invalid_normal: "Normal",
-          summary_finished_total: "Finished",
-          status_finished_qualified: "PRODUCT",
-          status_finished_invalid: "FINISHED-INVALID",
-          status_finished_suffix: "(Fin)",
+          cat_all: "All", cat_qualified: "Qualified", cat_invalid: "Normal", cat_finished: "Finished", cat_idle: "Idle",
+          onekey_btn: "Batch Verify", msg_onekey_too_many: "Max 5 IDs", msg_onekey_missing: "Enter IDs first", msg_onekey_running: "Processing...", msg_onekey_fail: "Failed",
+          view_sheerid: "Links View", view_accounts: "List View", sheerid_desc: "Showing QUALIFIED accounts with SheerID links",
+          twofa_title: "2FA Generator", twofa_timer: "Refresh", twofa_note: "Click to copy",
+          refresh_label: "Refresh Rate(s)", apply_refresh: "Set", manual_refresh: "Refresh",
+          auto_refresh_on: "Auto: On", auto_refresh_off: "Auto: Off", reset_checking: "Reset",
+          status_title: "Status", th_email: "Account", th_password: "Password", th_recovery_email: "Recovery", th_2fa: "2FA", th_sheerid: "SheerID Link", th_verify_status: "Verify Status", th_status: "Status", th_sold: "Sold", th_actions: "Actions",
+          sold_yes: "Yes", sold_no: "-", verify_btn: "Verify",
+          summary_total: "Total", summary_idle: "Idle", summary_checking: "Checking", summary_qualified: "Qualified", summary_invalid: "Invalid", summary_qualified_normal: "Qualified", summary_invalid_normal: "Normal", summary_finished_total: "Finished",
           status_product: "PRODUCT",
-          msg_refreshed: "Updated",
-          msg_refresh_fail: "Update Failed",
-          msg_file_missing: "Select a file first",
-          msg_import_done: (added, updated, skipped) =>
-            `Done: +${added}, ~${updated}, -${skipped}`,
-          msg_import_fail: "Import Failed",
-          msg_refresh_set: (seconds) => `Interval: ${seconds}s`,
-          msg_reset_done: (count) => `Reset ${count} items`,
-          msg_reset_fail: "Reset Failed",
-          msg_reset_confirm: "Reset all checking items?",
-          msg_sold_updated: "Sold status updated",
-          msg_sold_update_fail: "Update failed",
-          delete_btn: "Del",
-          msg_delete_confirm: "Delete this account permanently?",
-          msg_delete_done: "Deleted",
-          msg_delete_fail: "Failed",
-          msg_sheerid_delete_confirm: "Delete this account's SheerID link?",
-          msg_sheerid_delete_done: "SheerID link deleted",
-          msg_sheerid_delete_fail: "Failed to delete SheerID link",
-          edit_hint: "Double click to edit",
-          edit_btn: "Edit",
-          edit_title: "Edit Account",
-          edit_email: "Email",
-          edit_password: "Password",
-          edit_recovery_email: "Recovery Email",
-          edit_2fa: "2FA Token",
-          edit_status: "Status",
-          edit_sold: "Sold",
-          edit_save: "Save",
-          edit_cancel: "Cancel",
-          msg_edit_saved: "Saved",
-          msg_edit_save_fail: "Error",
-          export_btn: "Exp",
-          msg_export_done: "Copied",
-          msg_export_fail: "Copy Failed",
-          export_selected: "Export Sel.",
-          export_labels: {
-            email: "email",
-            password: "password",
-            recoveryEmail: "recoveryEmail",
-            authenticatorToken: "authenticatorToken",
-          },
-          reset_selected: "Reset Sel.",
-          set_product_selected: "Set PRODUCT",
-          delete_selected: "Delete Sel.",
-          clear_select: "Clear",
-          selected_count: (n) => `${n} selected`,
-          msg_export_none: "None selected",
-          msg_reset_selected_none: "None selected",
-          msg_reset_selected_confirm: (n) => `Reset ${n} selected to IDLE?`,
-          msg_reset_selected_done: (n) => `Reset ${n} items`,
-          msg_reset_selected_fail: "Failed",
-          msg_set_product_selected_none: "None selected",
-          msg_set_product_selected_confirm: (n) => `Set ${n} selected to PRODUCT?`,
-          msg_set_product_selected_done: (n) => `Set ${n} items to PRODUCT`,
-          msg_set_product_selected_fail: "Failed",
-          msg_delete_selected_none: "None selected",
-          msg_delete_selected_confirm: (n) => `Delete ${n} selected?`,
-          msg_delete_selected_done: (n) => `Deleted ${n} items`,
-          msg_delete_selected_fail: "Delete failed",
-          msg_status_updated: "Status updated",
-          msg_status_update_fail: "Update failed",
-          msg_cell_copied: "Copied",
-          msg_cell_copy_fail: "Error",
-          theme_dark: "Dark",
-          theme_light: "Light",
-          empty_table: "No data",
-          empty_sheerid: "No links",
-        },
+          msg_refreshed: "Updated", msg_refresh_fail: "Failed", msg_file_missing: "Select file first",
+          msg_import_done: (a, u, s) => `+${a} ~${u} -${s}`, msg_import_fail: "Import Failed",
+          msg_refresh_set: (s) => `Interval: ${s}s`, msg_reset_done: (c) => `Reset ${c}`, msg_reset_fail: "Failed", msg_reset_confirm: "Reset all checking?",
+          msg_sold_updated: "Updated", msg_sold_update_fail: "Failed",
+          delete_btn: "Del", msg_delete_confirm: "Delete?", msg_delete_done: "Deleted", msg_delete_fail: "Failed",
+          msg_sheerid_delete_confirm: "Delete link?", msg_sheerid_delete_done: "Deleted", msg_sheerid_delete_fail: "Failed",
+          edit_btn: "Edit", edit_title: "Edit Account", edit_email: "Email", edit_password: "Password", edit_recovery_email: "Recovery", edit_2fa: "2FA", edit_status: "Status", edit_sold: "Sold", edit_save: "Save", edit_cancel: "Cancel",
+          msg_edit_saved: "Saved", msg_edit_save_fail: "Error",
+          export_btn: "Exp", msg_export_done: "Copied", msg_export_fail: "Failed",
+          export_labels: { email: "email", password: "password", recoveryEmail: "recoveryEmail", authenticatorToken: "authenticatorToken" },
+          selected_count: (n) => `${n} sel`, msg_export_none: "None selected",
+          msg_reset_selected_none: "None", msg_reset_selected_confirm: (n) => `Reset ${n} to IDLE?`, msg_reset_selected_done: (n) => `Reset ${n}`, msg_reset_selected_fail: "Failed",
+          msg_set_product_selected_none: "None", msg_set_product_selected_confirm: (n) => `Set ${n} to PRODUCT?`, msg_set_product_selected_done: (n) => `Set ${n}`, msg_set_product_selected_fail: "Failed",
+          msg_delete_selected_none: "None", msg_delete_selected_confirm: (n) => `Delete ${n}?`, msg_delete_selected_done: (n) => `Deleted ${n}`, msg_delete_selected_fail: "Failed",
+          msg_cell_copied: "Copied", msg_cell_copy_fail: "Error",
+          empty_table: "No data", empty_sheerid: "No links"
+        }
       };
 
+      function setMessage(text, tone = "info") {
+        messageEl.textContent = text;
+        messageEl.style.color = tone === "error" ? "var(--status-invalid-text)" : "var(--status-qualified-text)";
+        setTimeout(() => { if (messageEl.textContent === text) messageEl.textContent = ""; }, 3000);
+      }
+
+      function getCurrentTheme() { return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light"; }
+      function setTheme(theme, persist = true) {
+        const normalized = theme === "dark" ? "dark" : "light";
+        if (normalized === "dark") document.documentElement.setAttribute("data-theme", "dark");
+        else document.documentElement.removeAttribute("data-theme");
+        if (persist) localStorage.setItem("theme", normalized);
+        themeToggleBtn.innerHTML = normalized === "dark" ? ICONS.moon : ICONS.sun;
+      }
+
+      function getCurrentStatusView() { return (localStorage.getItem("status_view") || "ACCOUNTS").toUpperCase() === "SHEERID" ? "SHEERID" : "ACCOUNTS"; }
+      function setStatusView(view, persist = true) {
+        const v = view === "SHEERID" ? "SHEERID" : "ACCOUNTS";
+        if (persist) localStorage.setItem("status_view", v);
+        const t = i18n[currentLang];
+        if (v === "SHEERID") { accountsViewEl.style.display = "none"; sheeridViewEl.style.display = "flex"; toggleSheeridViewBtn.querySelector("span").textContent = t.view_accounts; }
+        else { accountsViewEl.style.display = "flex"; sheeridViewEl.style.display = "none"; toggleSheeridViewBtn.querySelector("span").textContent = t.view_sheerid; }
+        renderActiveView();
+      }
+
+      async function copyText(text) {
+        try { await navigator.clipboard.writeText(text); return true; }
+        catch { try { const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.left = "-9999px"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); return true; } catch { return false; } }
+      }
+
+      function buildExportText(account) {
+        const labels = i18n[currentLang].export_labels;
+        const lines = [];
+        if (account.email) lines.push(`${labels.email}${account.email}`);
+        if (account.password) lines.push(`${labels.password}${account.password}`);
+        if (account.recoveryEmail) lines.push(`${labels.recoveryEmail}${account.recoveryEmail}`);
+        if (account.authenticatorToken) lines.push(`${labels.authenticatorToken}${account.authenticatorToken}`);
+        return lines.join("\n");
+      }
+
       function openEditModal(account) {
-        if (!editModal) return;
         editModal.dataset.originalEmail = account.email || "";
         editEmailInput.value = account.email || "";
         editPasswordInput.value = account.password || "";
@@ -993,155 +555,8 @@
         editStatusSelect.value = account.status || "IDLE";
         editSoldInput.checked = !!account.sold;
         editModal.dataset.open = "true";
-        editModal.setAttribute("aria-hidden", "false");
       }
-
-      function closeEditModal() {
-        if (!editModal) return;
-        editModal.dataset.open = "false";
-        editModal.setAttribute("aria-hidden", "true");
-      }
-
-      function buildExportText(account) {
-        const lines = [];
-        const labels = i18n[currentLang].export_labels;
-        const email = (account.email || "").trim();
-        const password = (account.password || "").trim();
-        const recoveryEmail = (account.recoveryEmail || "").trim();
-        const authenticatorToken = (account.authenticatorToken || "").trim();
-        if (email) lines.push(`${labels.email.trim()}${email}`);
-        if (password) lines.push(`${labels.password.trim()}${password}`);
-        if (recoveryEmail) lines.push(`${labels.recoveryEmail.trim()}${recoveryEmail}`);
-        if (authenticatorToken) lines.push(`${labels.authenticatorToken.trim()}${authenticatorToken}`);
-        return lines.join("\n");
-      }
-
-      function setMessage(text, tone = "info") {
-        messageEl.textContent = text;
-        messageEl.style.color = tone === "error" ? "var(--status-invalid-text)" : "var(--accent-2)";
-        setTimeout(() => {
-            if(messageEl.textContent === text) messageEl.textContent = "";
-        }, 3000);
-      }
-
-      function getCurrentTheme() {
-        return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
-      }
-
-      function setTheme(theme, persist = true) {
-        const normalized = theme === "dark" ? "dark" : "light";
-        if (normalized === "dark") {
-          document.documentElement.setAttribute("data-theme", "dark");
-        } else {
-          document.documentElement.removeAttribute("data-theme");
-        }
-        if (persist) {
-          localStorage.setItem("theme", normalized);
-        }
-        updateThemeToggleIcon();
-      }
-
-      function updateThemeToggleIcon() {
-        // Toggle between Sun and Moon Icons
-        const isDark = getCurrentTheme() === "dark";
-        themeToggleBtn.innerHTML = isDark ? ICONS.moon : ICONS.sun;
-      }
-
-      function getCurrentStatusView() {
-        const v = (localStorage.getItem("status_view") || "ACCOUNTS").toUpperCase();
-        return v === "SHEERID" ? "SHEERID" : "ACCOUNTS";
-      }
-
-      function setStatusView(view, persist = true) {
-        const v = view === "SHEERID" ? "SHEERID" : "ACCOUNTS";
-        if (persist) {
-          localStorage.setItem("status_view", v);
-        }
-        const t = i18n[currentLang];
-        // Note: We are updating text content here, keeping icons in HTML would require more complex logic
-        // For simplicity, we just update the text and keep the icon static in HTML (eye icon)
-        if (v === "SHEERID") {
-          accountsViewEl.style.display = "none";
-          sheeridViewEl.style.display = "block";
-          toggleSheeridViewBtn.querySelector("span").textContent = t.view_accounts;
-        } else {
-          accountsViewEl.style.display = "flex";
-          sheeridViewEl.style.display = "none";
-          toggleSheeridViewBtn.querySelector("span").textContent = t.view_sheerid;
-        }
-        renderActiveView();
-      }
-
-      async function fetchCheckToken(verificationIds, useLucky, programId) {
-        const resp = await fetch("/api/sheerid-verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ verificationIds, useLucky, programId })
-        });
-        if (!resp.ok) throw new Error("Request failed: " + resp.status);
-        const data = await resp.json();
-        return data && data.checkToken ? data.checkToken : "";
-      }
-
-      async function fetchCheckStatus(checkToken) {
-        const resp = await fetch("/api/check-status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ checkToken })
-        });
-        if (!resp.ok) throw new Error("Request failed: " + resp.status);
-        const text = await resp.text();
-        try {
-          return JSON.parse(text);
-        } catch {
-          return { message: text };
-        }
-      }
-
-      function isCheckDone(data) {
-        if (!data || typeof data !== "object") return true;
-        const status = String(data.status || data.state || "").toLowerCase();
-        if (["running", "pending", "processing", "queued"].includes(status)) return false;
-        if (data.completed === false || data.done === false) return false;
-        return true;
-      }
-
-      async function verifySheeridStatus(verificationIds, onResult) {
-        const programId = "";
-        const useLucky = false;
-
-        const checkToken = await fetchCheckToken(verificationIds, useLucky, programId);
-        if (!checkToken) throw new Error("No checkToken returned");
-
-        const maxTries = 20;
-        for (let i = 0; i < maxTries; i++) {
-          const data = await fetchCheckStatus(checkToken);
-          if (onResult) onResult(data);
-          if (isCheckDone(data)) break;
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-
-      async function copyText(text) {
-        try {
-          await navigator.clipboard.writeText(text);
-          return true;
-        } catch {
-          try {
-            const ta = document.createElement("textarea");
-            ta.value = text;
-            ta.style.position = "fixed";
-            ta.style.left = "-9999px";
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand("copy");
-            document.body.removeChild(ta);
-            return true;
-          } catch {
-            return false;
-          }
-        }
-      }
+      function closeEditModal() { editModal.dataset.open = "false"; }
 
       function updateSelectionUI() {
         const t = i18n[currentLang];
@@ -1154,345 +569,225 @@
 
       function getFilteredAccounts() {
         const list = Array.isArray(lastAccounts) ? lastAccounts : [];
-        if (currentCategory === "QUALIFIED") {
-          return list.filter((a) => a && a.status === "QUALIFIED");
-        }
-        if (currentCategory === "INVALID") {
-          return list.filter((a) => a && a.status === "INVALID");
-        }
-        if (currentCategory === "FINISHED") {
-          return list.filter((a) => a && a.status === "PRODUCT");
-        }
-        if (currentCategory === "IDLE") {
-          return list.filter((a) => a && a.status === "IDLE");
-        }
+        if (currentCategory === "QUALIFIED") return list.filter(a => a && a.status === "QUALIFIED");
+        if (currentCategory === "INVALID") return list.filter(a => a && a.status === "INVALID");
+        if (currentCategory === "FINISHED") return list.filter(a => a && a.status === "PRODUCT");
+        if (currentCategory === "IDLE") return list.filter(a => a && a.status === "IDLE");
         return list;
       }
 
       function renderSummary(counts, total) {
         const t = i18n[currentLang];
-        const qualifiedNormal = lastAccounts.filter((a) => a && a.status === "QUALIFIED").length;
-        const invalidNormal = lastAccounts.filter((a) => a && a.status === "INVALID").length;
-        const finishedTotal = lastAccounts.filter((a) => a && a.status === "PRODUCT").length;
+        const qualifiedNormal = lastAccounts.filter(a => a && a.status === "QUALIFIED").length;
+        const invalidNormal = lastAccounts.filter(a => a && a.status === "INVALID").length;
+        const finishedTotal = lastAccounts.filter(a => a && a.status === "PRODUCT").length;
         const items = [
           { label: t.summary_total, value: total },
           { label: t.summary_idle, value: counts.IDLE || 0 },
           { label: t.summary_checking, value: counts.CHECKING || 0 },
           { label: t.summary_qualified, value: counts.QUALIFIED || 0 },
           { label: t.summary_invalid, value: counts.INVALID || 0 },
-          { label: t.summary_qualified_normal, value: qualifiedNormal },
-          { label: t.summary_invalid_normal, value: invalidNormal },
-          { label: t.summary_finished_total, value: finishedTotal },
+          { label: t.summary_finished_total, value: finishedTotal }
         ];
-        summaryEl.innerHTML = items
-          .map(
-            (item) =>
-              `<div class="summary-card"><span>${item.label}</span><strong>${item.value}</strong></div>`
-          )
-          .join("");
+        summaryEl.innerHTML = items.map(item => `<div class="stat-item"><span class="stat-label">${item.label}</span><span class="stat-val">${item.value}</span></div>`).join("");
       }
 
-      function statusLabel(account) {
-        const t = i18n[currentLang];
-        const s = (account && account.status ? account.status : "").toString();
-        if (s === "PRODUCT") {
-          return t.status_product;
+      function statusLabel(account) { return account && account.status === "PRODUCT" ? i18n[currentLang].status_product : (account?.status || ""); }
+      function statusChipClass(account) { return `status-chip ${account?.status || ""}`; }
+      function getQualifiedSheeridAccounts() { return (lastAccounts || []).filter(a => a && a.status === "QUALIFIED" && a.sheeridUrl && String(a.sheeridUrl).trim()); }
+
+      async function fetchCheckToken(verificationIds, useLucky, programId) {
+        const resp = await fetch("/api/sheerid-verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ verificationIds, useLucky, programId }) });
+        if (!resp.ok) throw new Error("Request failed: " + resp.status);
+        const data = await resp.json();
+        return data?.checkToken || "";
+      }
+      async function fetchCheckStatus(checkToken) {
+        const resp = await fetch("/api/check-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ checkToken }) });
+        if (!resp.ok) throw new Error("Request failed: " + resp.status);
+        const text = await resp.text();
+        try { return JSON.parse(text); } catch { return { message: text }; }
+      }
+      function isCheckDone(data) {
+        if (!data || typeof data !== "object") return true;
+        const status = String(data.status || data.state || "").toLowerCase();
+        if (["running", "pending", "processing", "queued"].includes(status)) return false;
+        if (data.completed === false || data.done === false) return false;
+        return true;
+      }
+      async function verifySheeridStatus(verificationIds, onResult) {
+        const checkToken = await fetchCheckToken(verificationIds, false, "");
+        if (!checkToken) throw new Error("No checkToken");
+        for (let i = 0; i < 20; i++) {
+          const data = await fetchCheckStatus(checkToken);
+          if (onResult) onResult(data);
+          if (isCheckDone(data)) break;
+          await new Promise(r => setTimeout(r, 1000));
         }
-        return s;
-      }
-
-      function statusChipClass(account) {
-        const s = (account && account.status ? account.status : "").toString();
-        return `status-chip ${s}`;
-      }
-
-      function getQualifiedSheeridAccounts() {
-        const list = Array.isArray(lastAccounts) ? lastAccounts : [];
-        return list.filter((a) => a && a.status === "QUALIFIED" && a.sheeridUrl && String(a.sheeridUrl).trim());
       }
 
       function renderSheeridTable(accounts) {
         const t = i18n[currentLang];
-        if (!accounts || accounts.length === 0) {
-          sheeridTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px;">${t.empty_sheerid}</td></tr>`;
-          return;
-        }
-        sheeridTableBody.innerHTML = accounts
-          .map((a) => {
-            const url = String(a.sheeridUrl || "").trim();
-            // 从 URL 提取 verificationId
-            const idMatch = url.match(/([a-f0-9]{24})/i);
-            const verifyId = idMatch ? idMatch[1] : "";
-            return `<tr data-email="${a.email}" data-verify-id="${verifyId}">
-              <td class="copyable" data-copy-type="email" title="Click to copy">${a.email}</td>
-              <td class="copyable sheerid-cell" data-copy-type="sheerid" data-email="${a.email}" title="Click to copy">${url}</td>
-              <td class="verify-status" data-email="${a.email}" style="font-size:12px; color:var(--ink-soft);">-</td>
-              <td style="text-align:right; white-space:nowrap;">
-                <button class="secondary sheerid-verify-btn" data-email="${a.email}" data-verify-id="${verifyId}" style="padding:4px 8px;" ${!verifyId ? 'disabled' : ''}>
-                  ${t.verify_btn || '验证'}
-                </button>
-                <button class="secondary sheerid-delete-btn" data-email="${a.email}" style="padding:4px 8px; color: var(--status-invalid-text); border-color: rgba(200,0,0,0.2);">
-                  ${t.delete_btn}
-                </button>
-              </td>
-            </tr>`;
-          })
-          .join("");
+        if (!accounts || accounts.length === 0) { sheeridTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px;">${t.empty_sheerid}</td></tr>`; return; }
+        sheeridTableBody.innerHTML = accounts.map(a => {
+          const url = String(a.sheeridUrl || "").trim();
+          const idMatch = url.match(/([a-f0-9]{24})/i);
+          const verifyId = idMatch ? idMatch[1] : "";
+          return `<tr data-email="${a.email}" data-verify-id="${verifyId}">
+            <td class="copyable" data-copy-type="email" title="Click to copy">${a.email}</td>
+            <td class="copyable sheerid-cell" data-email="${a.email}" title="Click to copy">${url}</td>
+            <td class="verify-status" data-email="${a.email}" style="font-size:12px; color:var(--ink-soft);">-</td>
+            <td style="text-align:right; white-space:nowrap;">
+              <button class="secondary sheerid-verify-btn" data-email="${a.email}" data-verify-id="${verifyId}" style="padding:4px 8px;" ${!verifyId ? 'disabled' : ''}>${t.verify_btn}</button>
+              <button class="secondary sheerid-delete-btn" data-email="${a.email}" style="padding:4px 8px; color:var(--status-invalid-text);">${t.delete_btn}</button>
+            </td>
+          </tr>`;
+        }).join("");
 
-        sheeridTableBody.querySelectorAll(".copyable").forEach((el) => {
-          el.addEventListener("click", async (event) => {
-            event.stopPropagation();
-            if (el.querySelector("input")) return;
-            if (event.target.closest("button")) return;
-            const type = el.getAttribute("data-copy-type");
+        sheeridTableBody.querySelectorAll(".copyable").forEach(el => {
+          el.addEventListener("click", async e => {
+            e.stopPropagation();
+            if (el.querySelector("input") || e.target.closest("button")) return;
             const row = el.closest("tr");
             let text = (el.textContent || "").trim();
-            if (type === "email" && row) text = row.getAttribute("data-email") || text;
+            if (el.getAttribute("data-copy-type") === "email" && row) text = row.getAttribute("data-email") || text;
             if (!text) return;
-            const ok = await copyText(text);
-            if (ok) setMessage(i18n[currentLang].msg_cell_copied);
-            else setMessage(i18n[currentLang].msg_cell_copy_fail, "error");
+            if (await copyText(text)) setMessage(t.msg_cell_copied);
+            else setMessage(t.msg_cell_copy_fail, "error");
           });
         });
 
-        // Double-click to edit SheerID link (no link opening; single click copies).
-        sheeridTableBody.querySelectorAll(".sheerid-cell").forEach((cell) => {
-          cell.addEventListener("dblclick", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
+        sheeridTableBody.querySelectorAll(".sheerid-cell").forEach(cell => {
+          cell.addEventListener("dblclick", e => {
+            e.preventDefault(); e.stopPropagation();
             if (cell.querySelector("input")) return;
             const email = cell.getAttribute("data-email");
             if (!email) return;
             const original = (cell.textContent || "").trim();
-
             const input = document.createElement("input");
-            input.type = "text";
-            input.value = original;
-            input.style.width = "100%";
-            input.style.padding = "6px 8px";
-            input.style.borderRadius = "8px";
-            input.style.border = "1px solid var(--line)";
-            input.style.background = "var(--card)";
-            input.style.color = "var(--ink)";
-
-            cell.textContent = "";
-            cell.appendChild(input);
-            input.focus();
-            input.select();
-
-            const restore = () => {
-              cell.textContent = original;
-            };
-
-            input.addEventListener("keydown", (e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                restore();
-              }
-              if (e.key === "Enter") {
-                e.preventDefault();
-                input.blur();
-              }
-            });
-
+            input.type = "text"; input.value = original;
+            input.style.cssText = "width:100%; padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--ink);";
+            cell.textContent = ""; cell.appendChild(input); input.focus(); input.select();
+            const restore = () => { cell.textContent = original; };
+            input.addEventListener("keydown", ev => { if (ev.key === "Escape") { ev.preventDefault(); restore(); } if (ev.key === "Enter") { ev.preventDefault(); input.blur(); } });
             input.addEventListener("blur", async () => {
               const next = (input.value || "").trim();
-              if (next === original) {
-                restore();
-                return;
-              }
+              if (next === original) { restore(); return; }
               try {
-                const resp = await fetch("/api/sheerid", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ email, sheeridUrl: next }),
-                });
-                if (!resp.ok) throw new Error("update sheerid failed");
+                const resp = await fetch("/api/sheerid", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, sheeridUrl: next }) });
+                if (!resp.ok) throw new Error("update failed");
                 await fetchAccounts();
-              } catch (e) {
-                restore();
-                setMessage(i18n[currentLang].msg_edit_save_fail, "error");
-              }
+              } catch { restore(); setMessage(t.msg_edit_save_fail, "error"); }
             });
           });
         });
 
-        sheeridTableBody.querySelectorAll(".sheerid-delete-btn").forEach((btn) => {
-          btn.addEventListener("click", async (event) => {
-            event.preventDefault();
-            event.stopPropagation();
+        sheeridTableBody.querySelectorAll(".sheerid-delete-btn").forEach(btn => {
+          btn.addEventListener("click", async e => {
+            e.preventDefault(); e.stopPropagation();
             const email = btn.getAttribute("data-email");
-            if (!email) return;
-            if (!window.confirm(i18n[currentLang].msg_sheerid_delete_confirm)) return;
+            if (!email || !window.confirm(t.msg_sheerid_delete_confirm)) return;
             try {
-              const resp = await fetch("/api/sheerid", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, sheeridUrl: "" }),
-              });
-              if (!resp.ok) throw new Error("delete sheerid failed");
-              setMessage(i18n[currentLang].msg_sheerid_delete_done);
-              await fetchAccounts();
-            } catch (e) {
-              setMessage(i18n[currentLang].msg_sheerid_delete_fail, "error");
-            }
+              const resp = await fetch("/api/sheerid", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, sheeridUrl: "" }) });
+              if (!resp.ok) throw new Error("delete failed");
+              setMessage(t.msg_sheerid_delete_done); await fetchAccounts();
+            } catch { setMessage(t.msg_sheerid_delete_fail, "error"); }
           });
         });
 
-        // 验证按钮事件
-        sheeridTableBody.querySelectorAll(".sheerid-verify-btn").forEach((btn) => {
-          btn.addEventListener("click", async (event) => {
-            event.preventDefault();
-            event.stopPropagation();
+        sheeridTableBody.querySelectorAll(".sheerid-verify-btn").forEach(btn => {
+          btn.addEventListener("click", async e => {
+            e.preventDefault(); e.stopPropagation();
             const email = btn.getAttribute("data-email");
             const verifyId = btn.getAttribute("data-verify-id");
             if (!verifyId) return;
-            
             const statusCell = sheeridTableBody.querySelector(`.verify-status[data-email="${email}"]`);
             if (statusCell) statusCell.textContent = "验证中...";
             btn.disabled = true;
-            
             try {
-              await verifySheeridStatus([verifyId], (result) => {
-                if (statusCell) {
-                  // 结果事件，显示最终结果
-                  if (result) {
-                    const msg = result.message || result.currentStep || result.status || JSON.stringify(result);
-                    statusCell.textContent = msg;
-                    statusCell.style.color = (result.currentStep === "success" || result.status === "success") 
-                      ? "var(--status-qualified-text)" 
-                      : "var(--status-invalid-text)";
-                  }
+              await verifySheeridStatus([verifyId], result => {
+                if (statusCell && result) {
+                  const msg = result.message || result.currentStep || result.status || JSON.stringify(result);
+                  statusCell.textContent = msg;
+                  statusCell.style.color = (result.currentStep === "success" || result.status === "success") ? "var(--status-qualified-text)" : "var(--status-invalid-text)";
                 }
               });
-            } catch (e) {
-              if (statusCell) statusCell.textContent = "失败: " + e.message;
-            } finally {
-              btn.disabled = false;
-            }
+            } catch (err) { if (statusCell) statusCell.textContent = "失败: " + err.message; }
+            finally { btn.disabled = false; }
           });
         });
       }
 
       function renderActiveView() {
         const view = getCurrentStatusView();
-        if (view === "SHEERID") {
-          renderSheeridTable(getQualifiedSheeridAccounts());
-          return;
-        }
+        if (view === "SHEERID") { renderSheeridTable(getQualifiedSheeridAccounts()); return; }
         renderTable(getFilteredAccounts());
       }
 
       function renderTable(accounts) {
         const t = i18n[currentLang];
-          if (!accounts || accounts.length === 0) {
-          tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:30px; color:var(--ink-soft);">${t.empty_table}</td></tr>`;
-          updateSelectionUI();
-          return;
-        }
-
-        const currentEmails = new Set(accounts.map((a) => a.email));
-        Array.from(selectedEmails).forEach((e) => {
-          if (!currentEmails.has(e)) selectedEmails.delete(e);
-        });
+        if (!accounts || accounts.length === 0) { tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:30px; color:var(--ink-soft);">${t.empty_table}</td></tr>`; updateSelectionUI(); return; }
+        const currentEmails = new Set(accounts.map(a => a.email));
+        Array.from(selectedEmails).forEach(e => { if (!currentEmails.has(e)) selectedEmails.delete(e); });
         updateSelectionUI();
 
-        tableBody.innerHTML = accounts
-          .map((account) => {
-            return `<tr data-email="${account.email}">
-                <td style="text-align:center;">
-                  <input type="checkbox" class="row-select" data-email="${account.email}" ${
-                    selectedEmails.has(account.email) ? "checked" : ""
-                  } />
-                </td>
-                <td class="copyable col-email" data-copy-type="email" title="Copy">${account.email}</td>
-                <td class="copyable col-password" data-copy-type="password" title="Copy">${account.password || ""}</td>
-                <td class="copyable col-recovery" data-copy-type="recovery" title="Copy">${account.recoveryEmail || ""}</td>
-                <td class="copyable col-token" data-copy-type="token" title="Copy" style="font-family:'JetBrains Mono'; font-size:12px;">${account.authenticatorToken || ""}</td>
-                <td class="status-cell" data-email="${account.email}"><span class="${statusChipClass(account)}">${statusLabel(account)}</span></td>
-                <td>${account.sold ? t.sold_yes : t.sold_no}</td>
-                <td style="text-align:right; white-space:nowrap;">
-                  <button class="secondary export-btn" data-email="${account.email}" style="padding:4px 8px;">${t.export_btn}</button>
-                  <button class="secondary edit-btn" data-email="${account.email}" style="padding:4px 8px;">${t.edit_btn}</button>
-                  <button class="secondary delete-btn" data-email="${account.email}" style="padding:4px 8px; color: var(--status-invalid-text); border-color: rgba(200,0,0,0.2);">${t.delete_btn}</button>
-                </td>
-              </tr>`;
-          })
-          .join("");
+        tableBody.innerHTML = accounts.map(account => `<tr data-email="${account.email}">
+          <td style="text-align:center;"><input type="checkbox" class="row-select" data-email="${account.email}" ${selectedEmails.has(account.email) ? "checked" : ""} /></td>
+          <td class="copyable col-email" data-copy-type="email" title="Copy">${account.email}</td>
+          <td class="copyable col-password" data-copy-type="password" title="Copy">${account.password || ""}</td>
+          <td class="copyable col-recovery" data-copy-type="recovery" title="Copy">${account.recoveryEmail || ""}</td>
+          <td class="copyable col-token mono-text" data-copy-type="token" title="Copy">${account.authenticatorToken || ""}</td>
+          <td class="status-cell" data-email="${account.email}"><span class="${statusChipClass(account)}">${statusLabel(account)}</span></td>
+          <td style="text-align:center;">${account.sold ? t.sold_yes : t.sold_no}</td>
+          <td style="text-align:right; white-space:nowrap;">
+            <button class="secondary export-btn" data-email="${account.email}" style="padding:4px 8px;">${t.export_btn}</button>
+            <button class="secondary edit-btn" data-email="${account.email}" style="padding:4px 8px;">${t.edit_btn}</button>
+            <button class="secondary delete-btn" data-email="${account.email}" style="padding:4px 8px; color:var(--status-invalid-text);">${t.delete_btn}</button>
+          </td>
+        </tr>`).join("");
 
-        // Keep event listeners logic same as before...
-        tableBody.querySelectorAll(".row-select").forEach((el) => {
-          el.addEventListener("click", (e) => e.stopPropagation());
-          el.addEventListener("change", (event) => {
-            const input = event.target;
-            const email = input.getAttribute("data-email");
-            input.checked ? selectedEmails.add(email) : selectedEmails.delete(email);
-            updateSelectionUI();
+        tableBody.querySelectorAll(".row-select").forEach(el => {
+          el.addEventListener("click", e => e.stopPropagation());
+          el.addEventListener("change", e => { e.target.checked ? selectedEmails.add(e.target.getAttribute("data-email")) : selectedEmails.delete(e.target.getAttribute("data-email")); updateSelectionUI(); });
+        });
+        tableBody.querySelectorAll(".copyable").forEach(el => {
+          el.addEventListener("click", async e => {
+            e.stopPropagation();
+            const row = el.closest("tr");
+            let text = (el.textContent || "").trim();
+            if (el.getAttribute("data-copy-type") === "email" && row) text = row.getAttribute("data-email") || text;
+            if (!text) return;
+            if (await copyText(text)) setMessage(t.msg_cell_copied);
+            else setMessage(t.msg_cell_copy_fail, "error");
           });
         });
-
-        tableBody.querySelectorAll(".copyable").forEach((el) => {
-            el.addEventListener("click", async (event) => {
-                event.stopPropagation();
-                const type = el.getAttribute("data-copy-type");
-                const row = el.closest("tr");
-                let text = (el.textContent || "").trim();
-                if (type === "email" && row) text = row.getAttribute("data-email") || text;
-                if (!text) return;
-                const ok = await copyText(text);
-                if (ok) setMessage(i18n[currentLang].msg_cell_copied);
-                else setMessage(i18n[currentLang].msg_cell_copy_fail, "error");
-            });
-        });
-
-        tableBody.querySelectorAll(".export-btn").forEach((el) => {
-          el.addEventListener("click", async (event) => {
-            event.preventDefault(); event.stopPropagation();
-            const btn = event.target.closest(".export-btn");
-            const email = btn.getAttribute("data-email");
-            const t = i18n[currentLang];
-            const account = lastAccounts.find((a) => a && a.email === email);
-            const fallback = {
-              email,
-              password: btn.closest("tr")?.children[2]?.textContent || "",
-              recoveryEmail: btn.closest("tr")?.children[3]?.textContent || "",
-              authenticatorToken: btn.closest("tr")?.children[4]?.textContent || "",
-            };
-            const text = buildExportText(account || fallback);
-            if (!text) { setMessage(t.msg_export_none, "error"); return; }
-            const ok = await copyText(text);
-            if (ok) setMessage(i18n[currentLang].msg_export_done);
-            else setMessage(i18n[currentLang].msg_export_fail, "error");
-          });
-        });
-
-        tableBody.querySelectorAll(".edit-btn").forEach((el) => {
-          el.addEventListener("click", (event) => {
-            event.preventDefault(); event.stopPropagation();
+        tableBody.querySelectorAll(".export-btn").forEach(el => {
+          el.addEventListener("click", async e => {
+            e.preventDefault(); e.stopPropagation();
             const email = el.getAttribute("data-email");
-            const account = lastAccounts.find((a) => a && a.email === email);
-            if (!account) return;
-            openEditModal(account);
+            const account = lastAccounts.find(a => a && a.email === email);
+            const text = buildExportText(account || { email });
+            if (!text) { setMessage(t.msg_export_none, "error"); return; }
+            if (await copyText(text)) setMessage(t.msg_export_done);
+            else setMessage(t.msg_export_fail, "error");
           });
         });
-
-        tableBody.querySelectorAll(".delete-btn").forEach((el) => {
-          el.addEventListener("click", async (event) => {
-            const btn = event.target.closest(".delete-btn");
-            const email = btn.getAttribute("data-email");
-            if (!window.confirm(i18n[currentLang].msg_delete_confirm)) return;
+        tableBody.querySelectorAll(".edit-btn").forEach(el => {
+          el.addEventListener("click", e => {
+            e.preventDefault(); e.stopPropagation();
+            const account = lastAccounts.find(a => a && a.email === el.getAttribute("data-email"));
+            if (account) openEditModal(account);
+          });
+        });
+        tableBody.querySelectorAll(".delete-btn").forEach(el => {
+          el.addEventListener("click", async e => {
+            const email = el.getAttribute("data-email");
+            if (!window.confirm(t.msg_delete_confirm)) return;
             try {
-              const resp = await fetch("/api/delete", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email }),
-              });
+              const resp = await fetch("/api/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
               if (!resp.ok) throw new Error("delete failed");
-              setMessage(i18n[currentLang].msg_delete_done);
-              await fetchAccounts();
-            } catch (e) {
-              setMessage(i18n[currentLang].msg_delete_fail, "error");
-            }
+              setMessage(t.msg_delete_done); await fetchAccounts();
+            } catch { setMessage(t.msg_delete_fail, "error"); }
           });
         });
       }
@@ -1505,9 +800,7 @@
           lastAccounts = data.accounts || [];
           renderSummary(data.counts || {}, data.total || 0);
           renderActiveView();
-        } catch (error) {
-          setMessage(i18n[currentLang].msg_refresh_fail, "error");
-        }
+        } catch { setMessage(i18n[currentLang].msg_refresh_fail, "error"); }
       }
 
       function scheduleRefresh() {
@@ -1517,162 +810,59 @@
         setMessage(i18n[currentLang].msg_refresh_set(seconds));
       }
 
-      function updateFileHint() {
-        if (!fileHintEl) return;
-        const files = Array.from(fileInput.files || []);
-        const t = i18n[currentLang];
-        fileHintEl.textContent = files.length === 0 ? t.file_hint_none : t.file_hint_count(files.length);
-      }
+      function updateFileHint() { const files = Array.from(fileInput.files || []); const t = i18n[currentLang]; fileHintEl.textContent = files.length === 0 ? t.file_hint_none : t.file_hint_count(files.length); }
+      function updateTemplateHint() { const t = i18n[currentLang]; const v = templateSelect.value || "AUTO"; templateHintEl.textContent = v === "RECOVERY_EMAIL" ? t.template_hint_recovery : v === "TOKEN" ? t.template_hint_token : t.template_hint_auto; }
+      function updateAutoRefreshBtn() { const t = i18n[currentLang]; const span = document.querySelector("#toggleAutoRefresh span"); if (autoRefreshEnabled) { span.textContent = t.auto_refresh_on; document.getElementById("toggleAutoRefresh").style.background = "var(--accent)"; document.getElementById("toggleAutoRefresh").style.color = "#fff"; } else { span.textContent = t.auto_refresh_off; document.getElementById("toggleAutoRefresh").style.background = ""; document.getElementById("toggleAutoRefresh").style.color = ""; } }
 
-      function updateTemplateHint() {
-        if (!templateHintEl || !templateSelect) return;
-        const t = i18n[currentLang];
-        const value = templateSelect.value || "AUTO";
-        if (value === "RECOVERY_EMAIL") {
-          templateHintEl.textContent = t.template_hint_recovery;
-          return;
-        }
-        if (value === "TOKEN") {
-          templateHintEl.textContent = t.template_hint_token;
-          return;
-        }
-        templateHintEl.textContent = t.template_hint_auto;
-      }
+      function isExcelFile(file) { return excelExtensions.some(ext => (file?.name || "").toLowerCase().endsWith(ext)); }
+      function rowsToImportText(rows) { return (rows || []).map(row => row ? row.map(cell => String(cell ?? "").trim()).join(";") : "").filter(line => line && !line.split(";").every(c => c === "")).join("\n"); }
+      async function readExcelContent(file) { if (!window.XLSX) throw new Error("Excel parser not loaded"); const data = await file.arrayBuffer(); const workbook = XLSX.read(data, { type: "array" }); return (workbook.SheetNames || []).map(name => { const sheet = workbook.Sheets[name]; if (!sheet) return ""; return rowsToImportText(XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" })); }).filter(Boolean).join("\n"); }
+      async function readImportContent(file) { return isExcelFile(file) ? readExcelContent(file) : file.text(); }
 
-      if (editCancelBtn) {
-        editCancelBtn.addEventListener("click", () => closeEditModal());
-      }
-      if (editModal) {
-        editModal.addEventListener("click", (event) => {
-          if (event.target === editModal) closeEditModal();
-        });
-      }
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && editModal?.dataset.open === "true") {
-          closeEditModal();
-        }
+      editCancelBtn.addEventListener("click", closeEditModal);
+      editModal.addEventListener("click", e => { if (e.target === editModal) closeEditModal(); });
+      document.addEventListener("keydown", e => { if (e.key === "Escape" && editModal?.dataset.open === "true") closeEditModal(); });
+      editSaveBtn.addEventListener("click", async () => {
+        const t = i18n[currentLang];
+        const originalEmail = editModal?.dataset.originalEmail || "";
+        const email = editEmailInput.value.trim();
+        if (!email || !originalEmail) { setMessage(t.msg_edit_save_fail, "error"); return; }
+        const payload = { originalEmail, email, password: editPasswordInput.value || "", recoveryEmail: editRecoveryInput.value || "", authenticatorToken: editTokenInput.value || "", status: editStatusSelect.value || "IDLE", sold: !!editSoldInput.checked };
+        try {
+          const resp = await fetch("/api/update-account", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          if (!resp.ok) throw new Error("update failed");
+          setMessage(t.msg_edit_saved); closeEditModal(); await fetchAccounts();
+        } catch { setMessage(t.msg_edit_save_fail, "error"); }
       });
-      if (editSaveBtn) {
-        editSaveBtn.addEventListener("click", async () => {
-          const t = i18n[currentLang];
-          const originalEmail = editModal?.dataset.originalEmail || "";
-          const email = editEmailInput.value.trim();
-          if (!email || !originalEmail) {
-            setMessage(t.msg_edit_save_fail, "error");
-            return;
-          }
-          const payload = {
-            originalEmail,
-            email,
-            password: editPasswordInput.value || "",
-            recoveryEmail: editRecoveryInput.value || "",
-            authenticatorToken: editTokenInput.value || "",
-            status: editStatusSelect.value || "IDLE",
-            sold: !!editSoldInput.checked,
-          };
-          try {
-            const resp = await fetch("/api/update-account", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            });
-            if (!resp.ok) throw new Error("update failed");
-            setMessage(t.msg_edit_saved);
-            closeEditModal();
-            await fetchAccounts();
-          } catch (e) {
-            setMessage(t.msg_edit_save_fail, "error");
-          }
-        });
-      }
-
-      function isExcelFile(file) {
-        const name = (file?.name || "").toLowerCase();
-        return excelExtensions.some((ext) => name.endsWith(ext));
-      }
-
-      function rowsToImportText(rows) {
-        const lines = [];
-        (rows || []).forEach((row) => {
-          if (!row) return;
-          const normalized = row.map((cell) => String(cell ?? "").trim());
-          if (normalized.every((cell) => cell === "")) return;
-          lines.push(normalized.join(";"));
-        });
-        return lines.join("\n");
-      }
-
-      async function readExcelContent(file) {
-        if (!window.XLSX) {
-          throw new Error("Excel parser not loaded");
-        }
-        const data = await file.arrayBuffer();
-        const workbook = XLSX.read(data, { type: "array" });
-        const lines = [];
-        (workbook.SheetNames || []).forEach((name) => {
-          const sheet = workbook.Sheets[name];
-          if (!sheet) return;
-          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
-          const text = rowsToImportText(rows);
-          if (text) lines.push(text);
-        });
-        return lines.join("\n");
-      }
-
-      async function readImportContent(file) {
-        if (isExcelFile(file)) {
-          return readExcelContent(file);
-        }
-        return file.text();
-      }
 
       importBtn.addEventListener("click", async () => {
         const files = Array.from(fileInput.files || []);
-        if (files.length === 0) {
-          setMessage(i18n[currentLang].msg_file_missing, "error");
-          return;
-        }
+        if (files.length === 0) { setMessage(i18n[currentLang].msg_file_missing, "error"); return; }
         importBtn.disabled = true;
         try {
           const selectedTemplate = templateSelect ? templateSelect.value : "AUTO";
           let totalAdded = 0, totalUpdated = 0, totalSkipped = 0;
-          for (let i = 0; i < files.length; i++) {
-            const file = files[i];
+          for (const file of files) {
             const content = await readImportContent(file);
-            const response = await fetch("/api/import", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ content, template: selectedTemplate }),
-            });
+            const response = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content, template: selectedTemplate }) });
             if (!response.ok) throw new Error(`导入失败: ${file.name}`);
             const result = await response.json();
-            totalAdded += Number(result.added || 0);
-            totalUpdated += Number(result.updated || 0);
-            totalSkipped += Number(result.skipped || 0);
+            totalAdded += Number(result.added || 0); totalUpdated += Number(result.updated || 0); totalSkipped += Number(result.skipped || 0);
           }
-          setMessage(i18n[currentLang].msg_import_done(totalAdded, totalUpdated, totalSkipped));
-          await fetchAccounts();
-        } catch (error) {
-          setMessage(i18n[currentLang].msg_import_fail, "error");
-        } finally {
-          importBtn.disabled = false;
-        }
+          setMessage(i18n[currentLang].msg_import_done(totalAdded, totalUpdated, totalSkipped)); await fetchAccounts();
+        } catch { setMessage(i18n[currentLang].msg_import_fail, "error"); }
+        finally { importBtn.disabled = false; }
       });
 
       fileInput.addEventListener("change", updateFileHint);
-      if (templateSelect) {
-        templateSelect.addEventListener("change", updateTemplateHint);
-      }
+      templateSelect.addEventListener("change", updateTemplateHint);
 
       // 2FA Logic
       const twofaSecretInput = document.getElementById("twofaSecret");
       const totpCodeEl = document.getElementById("totpCode");
       const twofaCountdownEl = document.getElementById("twofaCountdown");
       const twofaStatusEl = document.getElementById("twofaStatus");
-
-      function normalizeBase32(secret) {
-        return (secret || "").toUpperCase().replace(/[\s\-]/g, "").trim();
-      }
+      function normalizeBase32(secret) { return (secret || "").toUpperCase().replace(/[\s\-]/g, "").trim(); }
       function refreshTwoFa() {
         const secretStr = normalizeBase32(twofaSecretInput.value);
         const now = Date.now();
@@ -1684,38 +874,24 @@
           const totp = new OTPAuth.TOTP({ issuer: 'Local', label: 'Account', algorithm: 'SHA1', digits: 6, period: period, secret: OTPAuth.Secret.fromBase32(secretStr) });
           const token = totp.generate();
           totpCodeEl.textContent = token.slice(0, 3) + " " + token.slice(3);
-          if (twofaStatusEl.innerText !== "已复制" && twofaStatusEl.innerText !== "Copied") {
-             twofaStatusEl.innerText = i18n[currentLang].twofa_note;
-          }
-        } catch (e) {
-          totpCodeEl.textContent = "ERROR";
-          twofaStatusEl.innerText = "密钥无效";
-        }
+          if (twofaStatusEl.innerText !== "已复制" && twofaStatusEl.innerText !== "Copied") twofaStatusEl.innerText = i18n[currentLang].twofa_note;
+        } catch { totpCodeEl.textContent = "ERROR"; twofaStatusEl.innerText = "密钥无效"; }
       }
       twofaSecretInput.addEventListener("input", () => { twofaStatusEl.innerText = "-"; refreshTwoFa(); });
       totpCodeEl.addEventListener("click", async () => {
         const text = totpCodeEl.textContent.replace(/\s/g, "");
         if (!text || text === "------" || text === "ERROR") return;
-        try {
-          await navigator.clipboard.writeText(text);
-          const oldText = twofaStatusEl.innerText;
-          twofaStatusEl.innerText = i18n[currentLang].msg_cell_copied;
-          setTimeout(() => { twofaStatusEl.innerText = oldText; }, 1000);
-        } catch {}
+        try { await navigator.clipboard.writeText(text); twofaStatusEl.innerText = i18n[currentLang].msg_cell_copied; setTimeout(() => { twofaStatusEl.innerText = i18n[currentLang].twofa_note; }, 1000); } catch {}
       });
       setInterval(refreshTwoFa, 1000); refreshTwoFa();
 
-      selectAllEl.addEventListener("change", () => {
-        if (selectAllEl.checked) getFilteredAccounts().forEach((a) => selectedEmails.add(a.email));
-        else getFilteredAccounts().forEach((a) => selectedEmails.delete(a.email));
-        renderActiveView();
-      });
+      selectAllEl.addEventListener("change", () => { if (selectAllEl.checked) getFilteredAccounts().forEach(a => selectedEmails.add(a.email)); else getFilteredAccounts().forEach(a => selectedEmails.delete(a.email)); renderActiveView(); });
       clearSelectionBtn.addEventListener("click", () => { selectedEmails.clear(); renderActiveView(); });
       exportSelectedBtn.addEventListener("click", async () => {
         const t = i18n[currentLang];
-        const chosen = lastAccounts.filter((a) => selectedEmails.has(a.email));
+        const chosen = lastAccounts.filter(a => selectedEmails.has(a.email));
         if (chosen.length === 0) { setMessage(t.msg_export_none, "error"); return; }
-        const lines = chosen.map((a) => buildExportText(a)).filter((text) => text);
+        const lines = chosen.map(a => buildExportText(a)).filter(Boolean);
         if (lines.length === 0) { setMessage(t.msg_export_none, "error"); return; }
         if (await copyText(lines.join("\n\n"))) setMessage(t.msg_export_done);
         else setMessage(t.msg_export_fail, "error");
@@ -1726,90 +902,42 @@
         if (emails.length === 0) { setMessage(t.msg_reset_selected_none, "error"); return; }
         if (!window.confirm(t.msg_reset_selected_confirm(emails.length))) return;
         try {
-          const resp = await fetch("/api/restore-statuses", {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: emails.map((email) => ({ email, status: "IDLE" })) }),
-          });
+          const resp = await fetch("/api/restore-statuses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: emails.map(email => ({ email, status: "IDLE" })) }) });
           if (!resp.ok) throw new Error("bulk reset failed");
-          setMessage(t.msg_reset_selected_done(emails.length));
-          await fetchAccounts();
-        } catch (e) { setMessage(t.msg_reset_selected_fail, "error"); }
+          setMessage(t.msg_reset_selected_done(emails.length)); await fetchAccounts();
+        } catch { setMessage(t.msg_reset_selected_fail, "error"); }
       });
-
-      if (setProductSelectedBtn) {
-        setProductSelectedBtn.addEventListener("click", async () => {
-          const t = i18n[currentLang];
-          const emails = Array.from(selectedEmails);
-          if (emails.length === 0) { setMessage(t.msg_set_product_selected_none, "error"); return; }
-          if (!window.confirm(t.msg_set_product_selected_confirm(emails.length))) return;
-          try {
-            const resp = await fetch("/api/restore-statuses", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ items: emails.map((email) => ({ email, status: "PRODUCT" })) }),
-            });
-            if (!resp.ok) throw new Error("bulk set product failed");
-            setMessage(t.msg_set_product_selected_done(emails.length));
-            await fetchAccounts();
-          } catch (e) {
-            setMessage(t.msg_set_product_selected_fail, "error");
-          }
-        });
-      }
-
-      if (deleteSelectedBtn) {
-        deleteSelectedBtn.addEventListener("click", async () => {
-          const t = i18n[currentLang];
-          const emails = Array.from(selectedEmails);
-          if (emails.length === 0) { setMessage(t.msg_delete_selected_none, "error"); return; }
-          if (!window.confirm(t.msg_delete_selected_confirm(emails.length))) return;
-          try {
-            const resp = await fetch("/api/delete-batch", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ emails }),
-            });
-            if (!resp.ok) throw new Error("bulk delete failed");
-            setMessage(t.msg_delete_selected_done(emails.length));
-            selectedEmails.clear();
-            await fetchAccounts();
-          } catch (e) {
-            setMessage(t.msg_delete_selected_fail, "error");
-          }
-        });
-      }
+      setProductSelectedBtn.addEventListener("click", async () => {
+        const t = i18n[currentLang];
+        const emails = Array.from(selectedEmails);
+        if (emails.length === 0) { setMessage(t.msg_set_product_selected_none, "error"); return; }
+        if (!window.confirm(t.msg_set_product_selected_confirm(emails.length))) return;
+        try {
+          const resp = await fetch("/api/restore-statuses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: emails.map(email => ({ email, status: "PRODUCT" })) }) });
+          if (!resp.ok) throw new Error("bulk set product failed");
+          setMessage(t.msg_set_product_selected_done(emails.length)); await fetchAccounts();
+        } catch { setMessage(t.msg_set_product_selected_fail, "error"); }
+      });
+      deleteSelectedBtn.addEventListener("click", async () => {
+        const t = i18n[currentLang];
+        const emails = Array.from(selectedEmails);
+        if (emails.length === 0) { setMessage(t.msg_delete_selected_none, "error"); return; }
+        if (!window.confirm(t.msg_delete_selected_confirm(emails.length))) return;
+        try {
+          const resp = await fetch("/api/delete-batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ emails }) });
+          if (!resp.ok) throw new Error("bulk delete failed");
+          setMessage(t.msg_delete_selected_done(emails.length)); selectedEmails.clear(); await fetchAccounts();
+        } catch { setMessage(t.msg_delete_selected_fail, "error"); }
+      });
 
       applyRefreshBtn.addEventListener("click", scheduleRefresh);
       manualRefreshBtn.addEventListener("click", fetchAccounts);
-      
-      // 自动刷新开关
-      const toggleAutoRefreshBtn = document.getElementById("toggleAutoRefresh");
-      let autoRefreshEnabled = true;
-      
-      function updateAutoRefreshBtn() {
-        const t = i18n[currentLang];
-        const span = toggleAutoRefreshBtn.querySelector("span");
-        if (autoRefreshEnabled) {
-          span.textContent = t.auto_refresh_on;
-          toggleAutoRefreshBtn.style.background = "var(--accent)";
-          toggleAutoRefreshBtn.style.color = "#fff";
-        } else {
-          span.textContent = t.auto_refresh_off;
-          toggleAutoRefreshBtn.style.background = "";
-          toggleAutoRefreshBtn.style.color = "";
-        }
-      }
-      
-      toggleAutoRefreshBtn.addEventListener("click", () => {
+      document.getElementById("toggleAutoRefresh").addEventListener("click", () => {
         autoRefreshEnabled = !autoRefreshEnabled;
-        if (autoRefreshEnabled) {
-          scheduleRefresh();
-        } else {
-          if (refreshTimer) clearInterval(refreshTimer);
-          refreshTimer = null;
-        }
+        if (autoRefreshEnabled) scheduleRefresh();
+        else { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = null; }
         updateAutoRefreshBtn();
       });
-      
       resetCheckingBtn.addEventListener("click", async () => {
         if (!window.confirm(i18n[currentLang].msg_reset_confirm)) return;
         try {
@@ -1817,114 +945,62 @@
           if (!response.ok) throw new Error("reset failed");
           const text = await response.text();
           const count = Number(text.split(":")[1]) || 0;
-          setMessage(i18n[currentLang].msg_reset_done(count));
-          await fetchAccounts();
-        } catch (error) { setMessage(i18n[currentLang].msg_reset_fail, "error"); }
+          setMessage(i18n[currentLang].msg_reset_done(count)); await fetchAccounts();
+        } catch { setMessage(i18n[currentLang].msg_reset_fail, "error"); }
       });
 
       function applyLanguage(lang) {
         currentLang = lang;
         document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
         document.title = i18n[currentLang].page_title;
-        document.querySelectorAll("[data-i18n]").forEach((node) => {
-          const key = node.getAttribute("data-i18n");
-          if (i18n[currentLang][key]) node.textContent = i18n[currentLang][key];
-        });
-        updateFileHint(); updateTemplateHint(); syncCategoryBar();
+        document.querySelectorAll("[data-i18n]").forEach(node => { const key = node.getAttribute("data-i18n"); if (i18n[currentLang][key]) node.textContent = i18n[currentLang][key]; });
+        updateFileHint(); updateTemplateHint(); syncCategoryBar(); updateAutoRefreshBtn();
         renderSummary({}, 0); fetchAccounts(); setStatusView(getCurrentStatusView(), false);
       }
-
-      function syncCategoryBar() {
-        if (!categoryBar) return;
-        categoryBar.querySelectorAll(".cat-btn").forEach((btn) => {
-          btn.setAttribute("data-active", btn.getAttribute("data-cat") === currentCategory ? "true" : "false");
-        });
-      }
-      if (categoryBar) {
-        categoryBar.querySelectorAll(".cat-btn").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            currentCategory = btn.getAttribute("data-cat") || "ALL";
-            syncCategoryBar(); renderActiveView();
-          });
-        });
-      }
-      langButtons.forEach((btn) => {
-        btn.addEventListener("click", () => applyLanguage(btn.getAttribute("data-lang")));
-      });
-      themeToggleBtn.addEventListener("click", () => {
-        const next = getCurrentTheme() === "dark" ? "light" : "dark";
-        setTheme(next, true);
-      });
-      if (toggleSheeridViewBtn) {
-        toggleSheeridViewBtn.addEventListener("click", () => {
-          const next = getCurrentStatusView() === "SHEERID" ? "ACCOUNTS" : "SHEERID";
-          setStatusView(next);
-        });
-      }
+      function syncCategoryBar() { categoryBar.querySelectorAll(".cat-btn").forEach(btn => { btn.setAttribute("data-active", btn.getAttribute("data-cat") === currentCategory ? "true" : "false"); }); }
+      categoryBar.querySelectorAll(".cat-btn").forEach(btn => { btn.addEventListener("click", () => { currentCategory = btn.getAttribute("data-cat") || "ALL"; syncCategoryBar(); renderActiveView(); }); });
+      langButtons.forEach(btn => { btn.addEventListener("click", () => applyLanguage(btn.getAttribute("data-lang"))); });
+      themeToggleBtn.addEventListener("click", () => { setTheme(getCurrentTheme() === "dark" ? "light" : "dark", true); });
+      toggleSheeridViewBtn.addEventListener("click", () => { setStatusView(getCurrentStatusView() === "SHEERID" ? "ACCOUNTS" : "SHEERID"); });
 
       const savedTheme = localStorage.getItem("theme");
-      if (savedTheme) { setTheme(savedTheme, false); }
-      else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) { setTheme("dark", false); }
-      else { setTheme("light", false); }
+      if (savedTheme) setTheme(savedTheme, false);
+      else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) setTheme("dark", false);
+      else setTheme("light", false);
 
-      // OneKey Batch 功能
+      // OneKey Batch
       const onekeyBatchBtn = document.getElementById("onekeyBatchBtn");
       const onekeyIdsEl = document.getElementById("onekeyIds");
       const onekeyProgramIdEl = document.getElementById("onekeyProgramId");
       const onekeyUseLuckyEl = document.getElementById("onekeyUseLucky");
       const onekeyResultEl = document.getElementById("onekeyResult");
-      
-      if (onekeyBatchBtn) {
-        onekeyBatchBtn.addEventListener("click", async () => {
-          const t = i18n[currentLang];
-          const raw = (onekeyIdsEl.value || "").trim();
-          if (!raw) { onekeyResultEl.textContent = t.msg_onekey_missing; return; }
-          
-          // 从输入中提取 verificationId（支持直接 ID 或 URL）
-          const lines = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-          const ids = lines.map(line => {
-            const match = line.match(/([a-f0-9]{24})/i);
-            return match ? match[1] : null;
-          }).filter(Boolean);
-          
-          if (ids.length === 0) { onekeyResultEl.textContent = t.msg_onekey_missing; return; }
-          if (ids.length > 5) { onekeyResultEl.textContent = t.msg_onekey_too_many; return; }
-          
-          const programId = (onekeyProgramIdEl.value || "").trim();
-          const useLucky = onekeyUseLuckyEl.checked;
-          
-          onekeyResultEl.textContent = t.msg_onekey_running;
-          onekeyBatchBtn.disabled = true;
-          
-          try {
-            const checkToken = await fetchCheckToken(ids, useLucky, programId);
-            if (!checkToken) {
-              onekeyResultEl.textContent = "No checkToken returned";
-              onekeyBatchBtn.disabled = false;
-              return;
-            }
-
-            let result = "";
-            const maxTries = 20;
-            for (let i = 0; i < maxTries; i++) {
-              const data = await fetchCheckStatus(checkToken);
-              const line = typeof data === "string" ? data : JSON.stringify(data);
-              if (line && line !== "{}") {
-                result += line + "\n";
-                onekeyResultEl.textContent = result;
-              }
-              if (isCheckDone(data)) break;
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-            }
-
-            if (!result) onekeyResultEl.textContent = "No response";
-          } catch (e) {
-            onekeyResultEl.textContent = t.msg_onekey_fail + ": " + e.message;
-          } finally {
-            onekeyBatchBtn.disabled = false;
+      onekeyBatchBtn.addEventListener("click", async () => {
+        const t = i18n[currentLang];
+        const raw = (onekeyIdsEl.value || "").trim();
+        if (!raw) { onekeyResultEl.textContent = t.msg_onekey_missing; return; }
+        const lines = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        const ids = lines.map(line => { const match = line.match(/([a-f0-9]{24})/i); return match ? match[1] : null; }).filter(Boolean);
+        if (ids.length === 0) { onekeyResultEl.textContent = t.msg_onekey_missing; return; }
+        if (ids.length > 5) { onekeyResultEl.textContent = t.msg_onekey_too_many; return; }
+        const programId = (onekeyProgramIdEl.value || "").trim();
+        const useLucky = onekeyUseLuckyEl.checked;
+        onekeyResultEl.textContent = t.msg_onekey_running;
+        onekeyBatchBtn.disabled = true;
+        try {
+          const checkToken = await fetchCheckToken(ids, useLucky, programId);
+          if (!checkToken) { onekeyResultEl.textContent = "No checkToken returned"; onekeyBatchBtn.disabled = false; return; }
+          let result = "";
+          for (let i = 0; i < 20; i++) {
+            const data = await fetchCheckStatus(checkToken);
+            const line = typeof data === "string" ? data : JSON.stringify(data);
+            if (line && line !== "{}") { result += line + "\n"; onekeyResultEl.textContent = result; }
+            if (isCheckDone(data)) break;
+            await new Promise(r => setTimeout(r, 1000));
           }
-        });
-      }
+          if (!result) onekeyResultEl.textContent = "No response";
+        } catch (e) { onekeyResultEl.textContent = t.msg_onekey_fail + ": " + e.message; }
+        finally { onekeyBatchBtn.disabled = false; }
+      });
 
       applyLanguage(currentLang);
       scheduleRefresh();

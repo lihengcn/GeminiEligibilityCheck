@@ -18,7 +18,7 @@ spring:
     activate:
       on-profile: sqlite
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:sqlite:./data/gem.db}
+    url: ${SPRING_DATASOURCE_URL:jdbc:sqlite:gem.db}
     username: ${SPRING_DATASOURCE_USERNAME:}
     password: ${SPRING_DATASOURCE_PASSWORD:}
     driver-class-name: org.sqlite.JDBC
