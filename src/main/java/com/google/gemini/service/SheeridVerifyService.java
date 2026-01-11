@@ -48,6 +48,7 @@ public class SheeridVerifyService {
         }
 
         String jsonBody = objectMapper.writeValueAsString(payload);
+        log.info("OneKey batch request: {}", jsonBody);
         Request apiRequest = new Request.Builder()
                 .url("https://batch.1key.me/api/batch")
                 .post(RequestBody.create(jsonBody, MediaType.parse("application/json")))
@@ -60,10 +61,13 @@ public class SheeridVerifyService {
 
         try (Response apiResp = httpClient.newCall(apiRequest).execute()) {
             if (!apiResp.isSuccessful() || apiResp.body() == null) {
+                String errorBody = apiResp.body() != null ? apiResp.body().string() : "no body";
+                log.error("OneKey batch failed: code={}, body={}", apiResp.code(), errorBody);
                 throw new IllegalStateException("Upstream error: " + apiResp.code());
             }
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(apiResp.body().byteStream(), StandardCharsets.UTF_8))) {
                 String line;
+                String lastResult = null;
                 while ((line = reader.readLine()) != null) {
                     String trimmed = line.trim();
                     if (trimmed.isEmpty()) {
@@ -76,11 +80,20 @@ public class SheeridVerifyService {
                             continue;
                         }
                         Map<String, Object> parsed = objectMapper.readValue(data, Map.class);
+                        // 优先返回 checkToken
                         Object token = parsed.get("checkToken");
                         if (token != null && !token.toString().isBlank()) {
                             return token.toString();
                         }
+                        // 保存最后的结果（可能包含错误信息）
+                        if (parsed.containsKey("currentStep") || parsed.containsKey("message")) {
+                            lastResult = data;
+                        }
                     }
+                }
+                // 如果没有 checkToken 但有结果，生成一个伪 token 返回结果
+                if (lastResult != null) {
+                    return "DIRECT:" + lastResult;
                 }
             }
         }
@@ -89,6 +102,11 @@ public class SheeridVerifyService {
     }
 
     public String checkStatus(String checkToken) throws Exception {
+        // 处理直接返回的结果（没有 checkToken 的情况）
+        if (checkToken != null && checkToken.startsWith("DIRECT:")) {
+            return checkToken.substring(7);
+        }
+        
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("checkToken", checkToken);
         String jsonBody = objectMapper.writeValueAsString(payload);

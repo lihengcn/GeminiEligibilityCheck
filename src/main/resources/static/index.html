@@ -781,15 +781,26 @@
             if (!verifyId) return;
             applyVerifyStatus(email, "验证中...");
             btn.disabled = true;
+            let markedProduct = false;
+            const isSuccessResult = (res) => {
+              if (!res) return false;
+              if (res.currentStep === "success") return true;
+              if (res.status === "SUCCESS") return true;
+              const msg = typeof res.message === "string" ? res.message : "";
+              return /verification step:\s*success/i.test(msg);
+            };
             try {
               await verifySheeridStatus([verifyId], result => {
                 if (result) {
                   const msg = result.message || result.currentStep || result.status || JSON.stringify(result);
-                  const isSuccess = result.currentStep === "success" || result.status === "success";
+                  const isSuccess = isSuccessResult(result);
                   applyVerifyStatus(email, msg);
                   // 保存到数据库
                   recordVerifyStatus(email, isSuccess ? "success" : "fail", msg);
-                  if (isSuccess) {
+                  if (!markedProduct && isSuccess) {
+                    markedProduct = true;
+                    // 立即设为成品号并记录历史
+                    fetch("/api/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, status: "PRODUCT" }) }).catch(() => {});
                     recordVerifyHistory(email);
                   }
                 }
@@ -950,7 +961,12 @@
       function scheduleRefresh() {
         if (refreshTimer) clearInterval(refreshTimer);
         const seconds = Number(refreshSecondsInput.value) || 5;
-        refreshTimer = setInterval(fetchAccounts, seconds * 1000);
+        refreshTimer = setInterval(() => {
+          // SheerID 视图不自动刷新
+          if (getCurrentStatusView() !== "SHEERID") {
+            fetchAccounts();
+          }
+        }, seconds * 1000);
         setMessage(i18n[currentLang].msg_refresh_set(seconds));
       }
 
